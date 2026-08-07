@@ -1,0 +1,8 @@
+# Cursor AI Rules — UFL Fantasy Football Draft Advisor
+
+- Refer to `AGENTS.md` for complete architecture, rules, and subsystem contracts.
+- UFL Scoring Math: Rushing & Receiving = 0.20 pts/yd (1 pt per 5 yds). 0.3 PPR. Passing = 0.04 pts/yd, 4 pt Pass TD, -2 INT.
+- Target Window: Q1 (Weeks 1-4).
+- 6-Team Snake Draft Matrix (12 rounds, 72 picks).
+- Use `streamlit run app.py` to run dashboard.
+- Run `python test_system.py` to execute system verification suite.

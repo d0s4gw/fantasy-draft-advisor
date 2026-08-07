@@ -1,0 +1,44 @@
+{
+  "league_name": "UFL Fantasy Football",
+  "num_teams": 6,
+  "num_rounds": 12,
+  "target_quarter": "Q1",
+  "weeks": [1, 2, 3, 4],
+  "my_team_name": "Team 1 (User)",
+  "governors": [
+    "Team 1 (User)",
+    "Team 2",
+    "Team 3",
+    "Team 4",
+    "Team 5",
+    "Team 6"
+  ],
+  "no_waivers": true,
+  "roster_settings": {
+    "QB": 2,
+    "RB": 1,
+    "WR": 1,
+    "TE": 1,
+    "FLEX": 2,
+    "BENCH": 5
+  },
+  "roster_requirements": {
+    "QB": 3,
+    "RB": 3,
+    "WR": 3,
+    "TE": 2
+  },
+  "scoring_rules": {
+    "pass_yds_per_pt": 25.0,
+    "pass_td_pts": 4.0,
+    "pass_int_pts": -2.0,
+    "rush_yds_per_pt": 5.0,
+    "rush_td_pts": 6.0,
+    "rec_pts": 0.3,
+    "rec_yds_per_pt": 5.0,
+    "rec_td_pts": 6.0,
+    "two_pt_pts": 2.0
+  },
+  "gcp_project_id": "YOUR_GCP_PROJECT_ID",
+  "gcp_location": "us-central1"
+}
