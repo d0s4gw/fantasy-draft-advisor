@@ -47,26 +47,25 @@ App will open automatically in your browser at `http://localhost:8501`.
 python test_system.py
 ```
 
----
-
-## License & Contributions
-
-This is a personal, read-only repository built for private UFL draft strategy.
-- **Viewing & Forking**: You are welcome to view, download, clone, or fork this repository for your own fantasy football league setups.
-- **Contributions**: Pull requests and external code contributions are not being accepted at this time.
-
-
 ### 3. Run Full 72-Pick Mock Draft Simulation
 ```bash
-./venv/bin/python run_mock_draft.py
+python run_mock_draft.py
 ```
 
 ### 4. Run Monte Carlo High-Variance Experiment
 ```bash
-./venv/bin/python run_variance_simulation.py
+python run_variance_simulation.py
 ```
 
 ---
 
 ## Projection CSV Exports
 Drop any raw projection CSV files into `data/sources/`. Configure source weights in the sidebar under **⚙️ Weighted Projection Sources**.
+
+---
+
+## Contributions & Usage
+This is a free, unlicensed personal repository built for UFL draft strategy.
+- **Viewing & Forking**: Free for anyone to view, download, clone, or fork for their own fantasy football league setups.
+- **Pull Requests**: External pull requests and code contributions are not being accepted at this time.
+
