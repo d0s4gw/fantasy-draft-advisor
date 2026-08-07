@@ -1,13 +1,13 @@
-# UFL Fantasy Football Draft Advisor 2026 — Agent & Developer Guide (`AGENTS.md`)
+# Fantasy Football Draft Advisor 2026 — Agent & Developer Guide (`AGENTS.md`)
 
-Welcome to the **UFL Fantasy Football Draft Advisor 2026** codebase!
+Welcome to the **Fantasy Football Draft Advisor 2026** codebase!
 This file serves as the primary technical map and agentic context document for AI coding assistants (Antigravity, Claude, Cursor, Windsurf, Copilot) and human developers.
 
 ---
 
 ## 1. Executive Summary & League Domain
 
-This project is a high-speed Python + Streamlit application engineered to optimize draft strategy for a **6-team, 4-quarter ("UFL") high-stakes fantasy football league ($1,800 pot)**.
+This project is a high-speed Python + Streamlit application engineered to optimize draft strategy for a **6-team, 4-quarter high-stakes fantasy football league**.
 
 ### Core League Parameters & Scoring Rules
 - **League Size**: 6 Teams ("Governors"):

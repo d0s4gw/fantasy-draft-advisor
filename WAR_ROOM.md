@@ -1,14 +1,14 @@
 # ⚔️ Turn Strategy Matrix ("War Room") — Architectural Plan & Roadmap (`WAR_ROOM.md`)
 
-This document outlines the complete technical blueprint and step-by-step implementation guide for the **Turn Strategy Matrix ("War Room")** feature in the **UFL Fantasy Football Draft Advisor 2026**.
+This document outlines the complete technical blueprint and step-by-step implementation guide for the **Turn Strategy Matrix ("War Room")** feature in the **Fantasy Football Draft Advisor 2026**.
 
 ---
 
 ## 1. Strategic Goal & Domain Context
 
-- **League Domain**: 6 Teams, 12-round snake draft (72 picks), $1,800 pot.
+- **League Domain**: 6 Teams, 12-round snake draft (72 picks).
 - **Lineup**: 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE), 5 Bench.
-- **Target Focus**: Q1 (Weeks 1–4) performance under custom UFL scoring (Rush/Rec: 1pt per 5 yds = 0.20 pts/yd).
+- **Target Focus**: Q1 (Weeks 1–4) performance under custom scoring (Rush/Rec: 1pt per 5 yds = 0.20 pts/yd).
 - **Core Objective**: Replace single-point VORP recommendation certainty with a **game-theoretic Decision Matrix**. When on the clock, the user can see top options, survival odds across opponent picks, positional regret cliffs, back-to-back turn pairings, and 10% floor / 90% ceiling simulation ranges.
 
 ---

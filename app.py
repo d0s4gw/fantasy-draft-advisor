@@ -20,7 +20,7 @@ from engine.strategy_presets import STRATEGY_PRESETS
 
 # Page Configuration
 st.set_page_config(
-    page_title="UFL Draft Advisor 2026",
+    page_title="Draft Advisor 2026",
     page_icon=":material/sports_football:",
     layout="wide",
     initial_sidebar_state="expanded"

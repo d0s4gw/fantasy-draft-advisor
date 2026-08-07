@@ -1,3 +1,652 @@
 {
-  "picks_history": []
+  "picks_history": [
+    {
+      "pick_no": 1,
+      "round": 1,
+      "governor": "Mike Welsh",
+      "player_name": "Player_0",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 2,
+      "round": 1,
+      "governor": "Mike Stoner",
+      "player_name": "Player_1",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 3,
+      "round": 1,
+      "governor": "Ryan Browder",
+      "player_name": "Player_2",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 4,
+      "round": 1,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_3",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 5,
+      "round": 1,
+      "governor": "Sam Clum",
+      "player_name": "Player_4",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 6,
+      "round": 1,
+      "governor": "Justin Browder",
+      "player_name": "Player_5",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 7,
+      "round": 2,
+      "governor": "Justin Browder",
+      "player_name": "Player_6",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 8,
+      "round": 2,
+      "governor": "Sam Clum",
+      "player_name": "Player_7",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 9,
+      "round": 2,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_8",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 10,
+      "round": 2,
+      "governor": "Ryan Browder",
+      "player_name": "Player_9",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 11,
+      "round": 2,
+      "governor": "Mike Stoner",
+      "player_name": "Player_10",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 12,
+      "round": 2,
+      "governor": "Mike Welsh",
+      "player_name": "Player_11",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 13,
+      "round": 3,
+      "governor": "Mike Welsh",
+      "player_name": "Player_12",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 14,
+      "round": 3,
+      "governor": "Mike Stoner",
+      "player_name": "Player_13",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 15,
+      "round": 3,
+      "governor": "Ryan Browder",
+      "player_name": "Player_14",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 16,
+      "round": 3,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_15",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 17,
+      "round": 3,
+      "governor": "Sam Clum",
+      "player_name": "Player_16",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 18,
+      "round": 3,
+      "governor": "Justin Browder",
+      "player_name": "Player_17",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 19,
+      "round": 4,
+      "governor": "Justin Browder",
+      "player_name": "Player_18",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 20,
+      "round": 4,
+      "governor": "Sam Clum",
+      "player_name": "Player_19",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 21,
+      "round": 4,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_20",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 22,
+      "round": 4,
+      "governor": "Ryan Browder",
+      "player_name": "Player_21",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 23,
+      "round": 4,
+      "governor": "Mike Stoner",
+      "player_name": "Player_22",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 24,
+      "round": 4,
+      "governor": "Mike Welsh",
+      "player_name": "Player_23",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 25,
+      "round": 5,
+      "governor": "Mike Welsh",
+      "player_name": "Player_24",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 26,
+      "round": 5,
+      "governor": "Mike Stoner",
+      "player_name": "Player_25",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 27,
+      "round": 5,
+      "governor": "Ryan Browder",
+      "player_name": "Player_26",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 28,
+      "round": 5,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_27",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 29,
+      "round": 5,
+      "governor": "Sam Clum",
+      "player_name": "Player_28",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 30,
+      "round": 5,
+      "governor": "Justin Browder",
+      "player_name": "Player_29",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 31,
+      "round": 6,
+      "governor": "Justin Browder",
+      "player_name": "Player_30",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 32,
+      "round": 6,
+      "governor": "Sam Clum",
+      "player_name": "Player_31",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 33,
+      "round": 6,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_32",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 34,
+      "round": 6,
+      "governor": "Ryan Browder",
+      "player_name": "Player_33",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 35,
+      "round": 6,
+      "governor": "Mike Stoner",
+      "player_name": "Player_34",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 36,
+      "round": 6,
+      "governor": "Mike Welsh",
+      "player_name": "Player_35",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 37,
+      "round": 7,
+      "governor": "Mike Welsh",
+      "player_name": "Player_36",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 38,
+      "round": 7,
+      "governor": "Mike Stoner",
+      "player_name": "Player_37",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 39,
+      "round": 7,
+      "governor": "Ryan Browder",
+      "player_name": "Player_38",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 40,
+      "round": 7,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_39",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 41,
+      "round": 7,
+      "governor": "Sam Clum",
+      "player_name": "Player_40",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 42,
+      "round": 7,
+      "governor": "Justin Browder",
+      "player_name": "Player_41",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 43,
+      "round": 8,
+      "governor": "Justin Browder",
+      "player_name": "Player_42",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 44,
+      "round": 8,
+      "governor": "Sam Clum",
+      "player_name": "Player_43",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 45,
+      "round": 8,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_44",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 46,
+      "round": 8,
+      "governor": "Ryan Browder",
+      "player_name": "Player_45",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 47,
+      "round": 8,
+      "governor": "Mike Stoner",
+      "player_name": "Player_46",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 48,
+      "round": 8,
+      "governor": "Mike Welsh",
+      "player_name": "Player_47",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 49,
+      "round": 9,
+      "governor": "Mike Welsh",
+      "player_name": "Player_48",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 50,
+      "round": 9,
+      "governor": "Mike Stoner",
+      "player_name": "Player_49",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 51,
+      "round": 9,
+      "governor": "Ryan Browder",
+      "player_name": "Player_50",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 52,
+      "round": 9,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_51",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 53,
+      "round": 9,
+      "governor": "Sam Clum",
+      "player_name": "Player_52",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 54,
+      "round": 9,
+      "governor": "Justin Browder",
+      "player_name": "Player_53",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 55,
+      "round": 10,
+      "governor": "Justin Browder",
+      "player_name": "Player_54",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 56,
+      "round": 10,
+      "governor": "Sam Clum",
+      "player_name": "Player_55",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 57,
+      "round": 10,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_56",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 58,
+      "round": 10,
+      "governor": "Ryan Browder",
+      "player_name": "Player_57",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 59,
+      "round": 10,
+      "governor": "Mike Stoner",
+      "player_name": "Player_58",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 60,
+      "round": 10,
+      "governor": "Mike Welsh",
+      "player_name": "Player_59",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 61,
+      "round": 11,
+      "governor": "Mike Welsh",
+      "player_name": "Player_60",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 62,
+      "round": 11,
+      "governor": "Mike Stoner",
+      "player_name": "Player_61",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 63,
+      "round": 11,
+      "governor": "Ryan Browder",
+      "player_name": "Player_62",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 64,
+      "round": 11,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_63",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 65,
+      "round": 11,
+      "governor": "Sam Clum",
+      "player_name": "Player_64",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 66,
+      "round": 11,
+      "governor": "Justin Browder",
+      "player_name": "Player_65",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 67,
+      "round": 12,
+      "governor": "Justin Browder",
+      "player_name": "Player_66",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 68,
+      "round": 12,
+      "governor": "Sam Clum",
+      "player_name": "Player_67",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 69,
+      "round": 12,
+      "governor": "Bryan Schoeff",
+      "player_name": "Player_68",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 70,
+      "round": 12,
+      "governor": "Ryan Browder",
+      "player_name": "Player_69",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 71,
+      "round": 12,
+      "governor": "Mike Stoner",
+      "player_name": "Player_70",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    },
+    {
+      "pick_no": 72,
+      "round": 12,
+      "governor": "Mike Welsh",
+      "player_name": "Player_71",
+      "position": "RB",
+      "team": "NFL",
+      "ufl_pts": 50.0
+    }
+  ]
 }

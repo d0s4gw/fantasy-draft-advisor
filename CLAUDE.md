@@ -1,6 +1,6 @@
-# UFL Fantasy Football Draft Advisor — Quick Agent Guide (`CLAUDE.md`)
+# Fantasy Football Draft Advisor — Quick Agent Guide (`CLAUDE.md`)
 
-This repository contains the **UFL Fantasy Football Draft Advisor 2026** (Streamlit app + math/AI engine).
+This repository contains the **Fantasy Football Draft Advisor 2026** (Streamlit app + math/AI engine).
 For complete architectural details, see [AGENTS.md](AGENTS.md).
 
 ## Quick Reference Commands

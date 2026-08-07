@@ -1,12 +1,12 @@
-# UFL Fantasy Football Draft Advisor 2026
+# Fantasy Football Draft Advisor 2026
 
-A high-speed, single-user local Python application built for winning the 6-team, 4-quarter "UFL" fantasy football league ($1,800 pot).
+A high-speed, single-user local Python application built for high-stakes fantasy football draft optimization and real-time decision support.
 
 ---
 
 ## Key Features
 
-1. **Custom UFL Scoring Math Engine**:
+1. **Custom Scoring Math Engine**:
    - Rushing & Receiving Yards: **1 pt per 5 yards ($0.20\text{ pts/yd}$)** — 2x multiplier vs standard fantasy.
    - 0.3 PPR, 4 pt Pass TD, -2 INT.
    - Tailored specifically for **Q1 (Weeks 1–4)**.

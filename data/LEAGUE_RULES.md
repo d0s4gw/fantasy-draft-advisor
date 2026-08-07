@@ -1,4 +1,4 @@
-# UFL Fantasy Football League Rules — DEFINITIVE CANONICAL SOURCE
+# Fantasy Football League Rules — DEFINITIVE CANONICAL SOURCE
 
 > **THIS IS THE SINGLE SOURCE OF TRUTH FOR ALL LEAGUE RULES.**
 >
@@ -12,11 +12,10 @@
 
 | Parameter           | Value                      |
 | :------------------ | :------------------------- |
-| League Name         | UFL Fantasy Football       |
+| League Name         | Fantasy Football League    |
 | Teams               | 6 ("Governors")            |
 | Draft Format        | 12-Round Snake Draft       |
 | Total Picks         | 72                         |
-| Entry Fee           | $300 per team ($1,800 pot) |
 | Scoring Window      | Q1 — Weeks 1 through 4    |
 | Waivers             | **None** (no-waiver league)|
 
