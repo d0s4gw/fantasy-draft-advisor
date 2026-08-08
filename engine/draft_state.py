@@ -115,7 +115,12 @@ class DraftState:
             self.drafted_players.remove(player_name.lower())
             
         if assigned_gov in self.rosters:
-            self.rosters[assigned_gov] = [p for p in self.rosters[assigned_gov] if p["player_name"].lower() != player_name.lower()]
+            # Remove only the last matching entry (by pick_no), not all entries with the same name
+            gov_roster = self.rosters[assigned_gov]
+            for i in range(len(gov_roster) - 1, -1, -1):
+                if gov_roster[i].get("player_name", "").lower() == player_name.lower():
+                    gov_roster.pop(i)
+                    break
             
         self.save_state()
         return last_pick

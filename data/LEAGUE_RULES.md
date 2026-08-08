@@ -23,10 +23,13 @@
 
 1. Team 1 (User) *(User / Target Team)*
 2. Team 2
-3. Team 4
-4. Team 3
+3. Team 3
+4. Team 4
 5. Team 5
 6. Team 6
+
+> **NOTE**: The draft order above is a placeholder. Update `data/config.json` (and
+> `data/config.local.json` for real names) once the actual draft order is determined.
 
 ---
 
@@ -87,6 +90,22 @@
 | Category              | Points           |
 | :-------------------- | :--------------- |
 | 2-Point Conversion    | 2 pts            |
+
+### Not Penalized
+
+| Category              | Points           |
+| :-------------------- | :--------------- |
+| Fumble Lost           | 0 pts (no penalty) |
+
+### Special Teams
+
+| Category              | Points           |
+| :-------------------- | :--------------- |
+| ST Player TD          | 6 pts            |
+
+> **NOTE**: Special Teams Player TDs (kick/punt return TDs) score 6 pts but are
+> not projected by standard fantasy projection sources. The scoring engine does
+> not include them in automated projections.
 
 ### Key Scoring Insight
 

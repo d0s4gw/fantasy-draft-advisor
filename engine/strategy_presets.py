@@ -35,16 +35,35 @@ STRATEGY_PRESETS = {
 
 class StrategyPresetManager:
     @staticmethod
-    def get_positional_multiplier(strategy: str, position: str, current_roster: List[Dict], round_no: int) -> float:
+    def get_positional_multiplier(
+        strategy: str,
+        position: str,
+        current_roster: List[Dict],
+        round_no: int,
+        undrafted_df=None,
+        roster_requirements: Dict = None
+    ) -> float:
         """
-        Returns a scaling multiplier (e.g. 0.8 to 1.3) for candidate VORP calculations
+        Returns a scaling multiplier (e.g. 0.8 to 1.35) for candidate VORP calculations
         based on the active macro strategy, position, roster state, and round number.
+        
+        For AUTO strategy, dynamically adapts based on available player tiers,
+        positional scarcity, and roster construction needs.
         """
         rb_count = len([p for p in current_roster if p.get("position") == "RB"])
+        wr_count = len([p for p in current_roster if p.get("position") == "WR"])
+        qb_count = len([p for p in current_roster if p.get("position") == "QB"])
         te_count = len([p for p in current_roster if p.get("position") == "TE"])
 
-        if strategy == "PURE_VORP" or strategy == "AUTO":
+        if strategy == "PURE_VORP":
             return 1.0
+
+        if strategy == "AUTO":
+            return StrategyPresetManager._auto_dynamic_multiplier(
+                position, current_roster, round_no,
+                qb_count, rb_count, wr_count, te_count,
+                undrafted_df, roster_requirements
+            )
 
         if strategy == "HERO_RB":
             if round_no <= 2:
@@ -82,3 +101,79 @@ class StrategyPresetManager:
                     return 1.35 # Heavy push for elite TE anchor in rounds 3-4
 
         return 1.0
+
+    @staticmethod
+    def _auto_dynamic_multiplier(
+        position: str,
+        current_roster: List[Dict],
+        round_no: int,
+        qb_count: int,
+        rb_count: int,
+        wr_count: int,
+        te_count: int,
+        undrafted_df=None,
+        roster_requirements: Dict = None
+    ) -> float:
+        """
+        Implements the AUTO strategy with 5 adaptive triggers:
+        1. QB Squeeze Detection
+        2. RB Cliff Urgency
+        3. Elite TE Window
+        4. Late-Round Roster Compliance
+        5. WR Volume Loading
+        
+        Triggers are evaluated in priority order; highest applicable multiplier wins.
+        """
+        mult = 1.0
+
+        # Default roster requirements (no-waiver league)
+        req = roster_requirements or {"QB": 3, "RB": 3, "WR": 3, "TE": 2}
+
+        # --- Trigger 1: QB Squeeze Detection ---
+        # If ≤3 top-tier QBs (≥35 UFL pts) remain and user has <2 QBs, boost QB
+        if position == "QB" and qb_count < 2 and undrafted_df is not None:
+            top_tier_qbs = undrafted_df[
+                (undrafted_df["position"] == "QB") & (undrafted_df["ufl_pts"] >= 35.0)
+            ]
+            if len(top_tier_qbs) <= 3:
+                mult = max(mult, 1.25)
+
+        # --- Trigger 2: RB Cliff Urgency ---
+        # If #1 available RB is ≥20 pts above #2 in Rounds 1-3 and user has 0 RBs
+        if position == "RB" and rb_count == 0 and round_no <= 3 and undrafted_df is not None:
+            avail_rbs = undrafted_df[undrafted_df["position"] == "RB"].sort_values(
+                by="ufl_pts", ascending=False
+            )
+            if len(avail_rbs) >= 2:
+                gap = avail_rbs.iloc[0]["ufl_pts"] - avail_rbs.iloc[1]["ufl_pts"]
+                if gap >= 20.0:
+                    mult = max(mult, 1.20)
+
+        # --- Trigger 3: Elite TE Window ---
+        # If only 1 elite TE (≥50 UFL pts) remains and user has 0 TEs in Rounds 3-5
+        if position == "TE" and te_count == 0 and 3 <= round_no <= 5 and undrafted_df is not None:
+            elite_tes = undrafted_df[
+                (undrafted_df["position"] == "TE") & (undrafted_df["ufl_pts"] >= 50.0)
+            ]
+            if len(elite_tes) == 1:
+                mult = max(mult, 1.30)
+
+        # --- Trigger 4: Late-Round Roster Compliance ---
+        # In Rounds 9+, boost positions where user is short of roster minimums
+        if round_no >= 9:
+            shortfall = {
+                "QB": max(0, req.get("QB", 3) - qb_count),
+                "RB": max(0, req.get("RB", 3) - rb_count),
+                "WR": max(0, req.get("WR", 3) - wr_count),
+                "TE": max(0, req.get("TE", 2) - te_count),
+            }
+            if shortfall.get(position, 0) > 0:
+                mult = max(mult, 1.20)
+
+        # --- Trigger 5: WR Volume Loading ---
+        # In Rounds 3-6, if user has ≤1 WR, boost WR to ensure FLEX depth
+        if position == "WR" and wr_count <= 1 and 3 <= round_no <= 6:
+            mult = max(mult, 1.15)
+
+        return mult
+

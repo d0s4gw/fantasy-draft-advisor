@@ -274,6 +274,10 @@ class FantasyProsWebFetcher(BaseFetcher):
             return None, self.scraped_urls
 
         combined = pd.concat(all_dfs, ignore_index=True)
+        # Convert season totals to 4-week Q1 totals
+        for col in STAT_COLS:
+            if col in combined.columns:
+                combined[col] = (combined[col] / GAMES_PER_SEASON * Q1_WEEKS).round(1)
         combined["two_pts"] = 0.0
         combined["adp"] = range(1, len(combined) + 1)
         combined["bye_week"] = 0
@@ -296,11 +300,26 @@ class SleeperAPIFetcher(BaseFetcher):
             req = urllib.request.Request(self.SLEEPER_URL, headers=self.headers)
             with urllib.request.urlopen(req, context=self.context, timeout=5) as resp:
                 if resp.status == 200:
-                    data = json.loads(resp.read().decode('utf-8'))
+                    raw_data = json.loads(resp.read().decode('utf-8'))
+                    # Build structured format compatible with SleeperSync
+                    id_to_name = {}
+                    name_to_id = {}
+                    for pid, pinfo in raw_data.items():
+                        first = pinfo.get("first_name", "")
+                        last = pinfo.get("last_name", "")
+                        full = f"{first} {last}".strip()
+                        if full:
+                            id_to_name[pid] = full
+                            name_to_id[full.lower()] = pid
+                    structured = {
+                        "id_to_name": id_to_name,
+                        "name_to_id": name_to_id,
+                        "_raw": raw_data
+                    }
                     cache_path = os.path.join(self.data_dir, "sleeper_players.json")
                     with open(cache_path, "w") as f:
-                        json.dump(data, f)
-                    return data
+                        json.dump(structured, f)
+                    return structured
         except Exception:
             pass
 

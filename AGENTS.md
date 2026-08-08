@@ -17,6 +17,11 @@ This project is a high-speed Python + Streamlit application engineered to optimi
   4. `Team 4`
   5. `Team 5`
   6. `Team 6`
+
+  > **NOTE**: The draft order above is a placeholder. Update `data/config.json`
+  > (and `data/config.local.json` for real governor names) once the actual draft
+  > order is determined.
+
 - **Draft Format**: 12-Round Snake Draft (72 total picks).
 - **Target Focus**: **Q1 (Weeks 1–4)** performance.
 - **Canonical Rules**: See [LEAGUE_RULES.md](data/LEAGUE_RULES.md) — the single source of truth for all league rules.
@@ -25,8 +30,11 @@ This project is a high-speed Python + Streamlit application engineered to optimi
   - **Passing**: 1 pt per 25 yards ($0.04\text{ pts/yd}$), 4 pt Pass TD, -2 INT.
   - **Receptions**: 0.3 PPR.
   - **2-pt Conversion**: 2 pts.
+  - **Fumble Lost**: 0 pts (not penalized).
+  - **ST Player TD**: 6 pts (not projected by sources).
 - **Starting Lineup (7 starters)**: 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE).
 - **Bench**: 5 open slots. **Total Roster**: 12 players.
+- **Roster Requirements** (no-waiver league): QB ≥3, RB ≥3, WR ≥3, TE ≥2.
 
 ---
 
@@ -56,8 +64,6 @@ fantasy-draft-advisor/
 │   └── sources/                      # Raw projection CSV exports from external providers
 │       ├── baseline_2026.csv
 │       └── fantasypros.csv
-│       ├── etr.csv
-│       └── pff.csv
 ├── engine/
 │   ├── AGENTS.md                     # Engine module contracts, VORP math & War Room guide
 │   ├── CLAUDE.md                     # Engine quick reference
@@ -116,16 +122,24 @@ fantasy-draft-advisor/
 - **Data Quality Guardrails (`DataSanityGuard`)**: Validates row counts ($\ge 20$ players) and schemas before updating source files to prevent corrupt overwrites.
 - **Name Suffix Normalization (`normalize_player_name`)**: Standardizes suffixes (`Jr.`, `III`, `II`, `Sr.`) for clean cross-source player matching.
 - Normalizes column names and applies custom UFL scoring formula:
-  $$\text{UFL Pts} = (\text{RushYds} + \text{RecYds}) \times 0.20 + (\text{RushTD} + \text{RecTD}) \times 6.0 + \text{PassYds} \times 0.04 + \text{PassTD} \times 4.0 - \text{INT} \times 2.0 + \text{Rec} \times 0.3$$
+  $$\text{UFL Pts} = (\text{RushYds} + \text{RecYds}) \times 0.20 + (\text{RushTD} + \text{RecTD}) \times 6.0 + \text{PassYds} \times 0.04 + \text{PassTD} \times 4.0 - \text{INT} \times 2.0 + \text{Rec} \times 0.3 + \text{2PtConv} \times 2.0$$
+- **Injury Discount Model**: Injury multiplier is applied to raw stats once (not to the final score). `touch_multiplier` overrides are applied independently after the injury discount. OUT/IR/PUP/SUS = 0×, DOUBTFUL = 0.25×, QUESTIONABLE = 0.75×.
 
 ### C. Joint Portfolio Optimizer & VORP (`engine/joint_optimizer.py`, `engine/vorp_calculator.py`)
 - Computes exact **Marginal Portfolio Gain** for every available player using 4-week Knapsack solver.
 - Evaluates candidate picks against the user's current roster rather than static baseline replacements.
+- **Refreshed Projections**: `get_optimal_lineup_details()` and `solve_weekly_starting_lineup()` accept optional `projections_df` to use current projection values rather than stale pick-time snapshots.
 - Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs ($\ge 35.0$ UFL pts for 4-week Q1) remain $\le 3$ and user has $< 2$ QBs before an extended pick wait.
 
 ### D. Recommendation & Turn Strategy Engine (`engine/live_math_engine.py`, `engine/joint_optimizer.py`)
 - **Live Math Engine (`LiveMathEngine`)**: Real-time sub-millisecond Knapsack VORP, starter standings, and opponent scarcity optimizer.
-- **Strategy Presets (`strategy_presets.py`)**: Supports macro strategy overrides (*Zero-QB*, *Zero-RB*, *Hero-RB*, *QB Squeeze Aggressive*, *Balanced VORP*).
+- **Strategy Presets (`strategy_presets.py`)**: Supports macro strategy overrides (*Zero-RB*, *Hero-RB*, *Robust Dual RB*, *Elite TE Anchor*, *Pure Math VORP*).
+- **Dynamic AUTO Strategy**: Adapts in real-time with 5 triggers:
+  1. **QB Squeeze Detection**: ≤3 top-tier QBs + <2 owned → boost 1.25×
+  2. **RB Cliff Urgency**: #1 RB ≥20pts above #2 in R1-3, 0 RBs → boost 1.20×
+  3. **Elite TE Window**: 1 elite TE left, 0 owned in R3-5 → boost 1.30×
+  4. **Late-Round Roster Compliance**: R9+, short of roster minimums → boost 1.20×
+  5. **WR Volume Loading**: R3-6, ≤1 WR → boost 1.15×
 - **Turn Strategy War Room**: Fast Monte Carlo simulation matrix generating candidate survival odds, positional regret cliffs, 10th/90th percentile outcome ranges, and automated decision badges (`🚨 MUST DRAFT`, `🔥 HIGH LEVERAGE`, `⏳ CAN WAIT`, `🛡️ SAFE FLOOR`).
 
 ---
@@ -163,14 +177,9 @@ python run_mock_draft.py
 python run_variance_simulation.py
 ```
 
-### 5. Regenerate Precomputed Gameplan
+### 5. Import FantasyPros CSV Projections
 ```bash
-python precompute_gameplan.py
-```
-
-### 6. Import Real NFL Projections
-```bash
-python populate_real_projections.py
+python import_fantasypros.py
 ```
 
 ---
@@ -180,10 +189,20 @@ python populate_real_projections.py
 1. **Streamlit UI Conventions**:
    - Do NOT use `use_container_width=True` (deprecated in newer Streamlit versions). Use `width="stretch"` or standard container layouts.
    - Use `st.session_state` carefully. Clear caches (`st.cache_data.clear()`) on draft reset or weight re-calculations.
+   - On draft reset, only delete draft-related session state keys (`draft_state`, `synth`, `sleeper_sync`), not all session state.
 2. **State Mutability**:
    - Always record draft picks via `DraftState.record_pick()`.
    - Never mutate `picks_history` or `rosters` directly without invoking persistence.
-3. **File Scheme & Markdown Links**:
+3. **Injury Discount Model**:
+   - Apply injury multiplier to **stats** (single discount point), NOT to the final UFL score.
+   - `touch_multiplier` overrides are applied independently after the injury discount.
+   - Never apply both stat reduction and score reduction for the same injury.
+4. **Sleeper JSON Format**:
+   - `sleeper_players.json` uses structured format: `{"id_to_name": {...}, "name_to_id": {...}}`.
+   - Both `SleeperAPIFetcher` and `SleeperSync` must read/write this format.
+5. **File Scheme & Markdown Links**:
    - Always reference project files with Markdown links (e.g. `[app.py](app.py)`).
-4. **Error Handling**:
+6. **Error Handling**:
+   - Log visible warnings when enabled projection sources are missing from disk.
+   - Show explicit error messages (`st.error`) when projections are empty.
    - Gracefully handle missing CSV sources or offline GCP credentials by providing fallback calculations.

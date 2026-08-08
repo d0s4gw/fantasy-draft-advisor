@@ -8,7 +8,8 @@ A high-speed, single-user local Python application built for high-stakes fantasy
 
 1. **Custom Scoring Math Engine**:
    - Rushing & Receiving Yards: **1 pt per 5 yards ($0.20\text{ pts/yd}$)** — 2x multiplier vs standard fantasy.
-   - 0.3 PPR, 4 pt Pass TD, -2 INT.
+   - 0.3 PPR, 4 pt Pass TD, -2 INT, 2 pt 2-Point Conversion.
+   - Fumble Lost: 0 pts (not penalized). ST Player TD: 6 pts (not projected).
    - Tailored specifically for **Q1 (Weeks 1–4)**.
 
 2. **Knapsack Portfolio VORP & Starter-Only Standings**:
@@ -17,7 +18,8 @@ A high-speed, single-user local Python application built for high-stakes fantasy
 
 3. **Live Recommendation & Turn Strategy War Room Engine**:
    - **Live Math Optimizer (`LiveMathEngine`)**: Sub-second Knapsack VORP, starter standings, and positional scarcity calculations.
-   - **Strategy Presets (`strategy_presets.py`)**: Supports macro strategy overrides (*Zero-QB*, *Zero-RB*, *Hero-RB*, *QB Squeeze Aggressive*, *Balanced VORP*).
+   - **Strategy Presets (`strategy_presets.py`)**: Supports macro strategy overrides (*Zero-RB*, *Hero-RB*, *Robust Dual RB*, *Elite TE Anchor*, *Pure Math VORP*).
+   - **Dynamic AUTO Strategy**: Adapts in real-time with 5 triggers (QB Squeeze, RB Cliff, Elite TE Window, Roster Compliance, WR Volume Loading).
    - **Turn Strategy War Room**: Real-time Monte Carlo simulations providing candidate survival odds, regret cliffs, 10th/90th percentile outcome ranges, and automated decision badges.
 
 4. **Sleeper API Live Draft Auto-Sync**:

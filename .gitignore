@@ -30,5 +30,8 @@ data/config.local.json
 data/sleeper_players.json
 data/draft_state.json
 
+# Backup files & temporary exports
+*.bak
+
 # Agent scratch directories
 .claude/

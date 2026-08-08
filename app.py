@@ -10,7 +10,7 @@ import streamlit as st
 from typing import Dict, List
 
 from engine.projection_synth import ProjectionSynthesizer
-from engine.projection_fetchers import FetcherManager
+from engine.projection_fetchers import FetcherManager, normalize_player_name
 from engine.draft_state import DraftState
 from engine.vorp_calculator import VORPCalculator
 from engine.opponent_predictor import OpponentPredictor
@@ -26,6 +26,30 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Inject Custom CSS for Popover Scrolling & Viewport Fitting
+st.markdown("""
+<style>
+/* Fix popover body scrolling for popovers in sidebar & main area */
+div[data-testid="stPopoverBody"],
+div[data-baseweb="popover"] > div,
+div[data-baseweb="popover"] {
+    max-height: 75vh !important;
+    overflow-y: auto !important;
+    padding-bottom: 1.5rem !important;
+}
+
+/* Ensure sidebar container allows scrolling without truncation */
+section[data-testid="stSidebar"] {
+    overflow-y: auto !important;
+}
+
+/* Ensure popover internal container doesn't cut off status messages */
+div[data-testid="stPopoverBody"] > div {
+    padding-bottom: 1rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +78,10 @@ def load_projections(_synth, _data_dir: str):
     return _synth.synthesize()
 
 projections_df = load_projections(synth, DATA_DIR)
+
+if projections_df.empty:
+    st.error("⚠️ **No projection data available.** Check that CSV source files exist in `data/sources/` and at least one source is enabled in `data/sources.json`.")
+    st.stop()
 
 # -------------------------------------------------------------
 # SIDEBAR CONTROLS & POPOVERS
@@ -92,6 +120,9 @@ with st.sidebar:
             st.toast("Projections re-calculated!")
             st.rerun()
 
+        # Spacer at bottom of popover 1
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
     # POPOVER 2: RECORD PICK / SLEEPER SYNC
     with st.popover("✏️ Record pick / Sleeper sync", icon=":material/sync:", width="stretch"):
         st.markdown("#### Manual logger & Sleeper sync")
@@ -114,23 +145,71 @@ with st.sidebar:
 
         st.markdown("---")
         st.markdown("##### Sleeper live draft auto-sync")
-        sleeper_draft_id = st.text_input("Sleeper draft ID", value="")
-        auto_sync = st.checkbox("Enable live polling (1.5s)", value=False)
-        if auto_sync and sleeper_draft_id:
-            picks = sleeper_sync.fetch_draft_picks(sleeper_draft_id)
-            if picks and len(picks) > len(draft_state.picks_history):
-                new_picks = picks[len(draft_state.picks_history):]
-                for p in new_picks:
-                    pname = p["player_name"]
-                    matched = projections_df[projections_df["name"].str.lower() == pname.lower()]
-                    if not matched.empty:
-                        pos = matched.iloc[0]["position"]
-                        tm = matched.iloc[0]["team"]
-                        pts = matched.iloc[0]["ufl_pts"]
-                    else:
-                        pos, tm, pts = "FLEX", "NFL", 0.0
-                    draft_state.record_pick(pname, pos, tm, pts)
-                st.rerun()
+
+        @st.fragment(run_every=1.5)
+        def sync_sleeper_picks_fragment():
+            sleeper_draft_id = st.text_input(
+                "Sleeper draft ID or URL",
+                value=st.session_state.get("sleeper_draft_id_val", ""),
+                key="sleeper_draft_id_input",
+                help="Paste 18-digit Sleeper Draft ID, League ID, or full draft URL"
+            )
+            st.session_state.sleeper_draft_id_val = sleeper_draft_id
+            
+            auto_sync = st.checkbox("Enable live polling (1.5s)", value=st.session_state.get("auto_sync_val", False), key="auto_sync_check")
+            st.session_state.auto_sync_val = auto_sync
+
+            if sleeper_draft_id:
+                info = sleeper_sync.get_draft_info(sleeper_draft_id)
+                if info:
+                    d_status = info.get("status", "unknown").upper()
+                    d_type = info.get("type", "snake").upper()
+                    actual_id = info.get("draft_id", sleeper_draft_id)
+                    
+                    picks = sleeper_sync.fetch_draft_picks(actual_id)
+                    st.caption(f"🟢 **Sleeper Room Connected**: {len(picks)} picks recorded • Status: `{d_status}` ({d_type})")
+                    
+                    if len(picks) > len(draft_state.picks_history):
+                        new_picks = picks[len(draft_state.picks_history):]
+                        synced_count = 0
+                        for p in new_picks:
+                            raw_pname = p["player_name"]
+                            norm_pname = normalize_player_name(raw_pname)
+                            
+                            # Match normalized player name against projections
+                            matched = projections_df[projections_df["name"].apply(normalize_player_name).str.lower() == norm_pname.lower()]
+                            if matched.empty:
+                                fuzzy_res = fuzzy_searcher.search(raw_pname, limit=1)
+                                if fuzzy_res:
+                                    matched = projections_df[projections_df["name"] == fuzzy_res[0]]
+
+                            if not matched.empty:
+                                pname = matched.iloc[0]["name"]
+                                pos = matched.iloc[0]["position"]
+                                tm = matched.iloc[0]["team"]
+                                pts = matched.iloc[0]["ufl_pts"]
+                            else:
+                                pname = raw_pname
+                                pos = p.get("position", "FLEX")
+                                tm = p.get("team", "NFL")
+                                pts = 0.0
+
+                            draft_state.record_pick(pname, pos, tm, pts)
+                            synced_count += 1
+                        
+                        st.toast(f"Synced {synced_count} new pick(s) from Sleeper!")
+                        st.rerun()
+                    elif len(picks) < len(draft_state.picks_history):
+                        st.caption("ℹ️ Local draft state has more picks than Sleeper (manual picks logged).")
+                else:
+                    st.warning(f"⚠️ Could not resolve Sleeper Draft/League ID for '{sleeper_draft_id}'. Verify URL/ID.")
+            else:
+                st.caption("ℹ️ Paste your 18-digit Sleeper Draft ID, League ID, or full draft URL above to auto-sync picks.")
+
+        sync_sleeper_picks_fragment()
+
+        # Extra bottom padding buffer so content below Sleeper text input is never cut off
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
 
     # QUICK CONTROL BUTTONS
     c_btn1, c_btn2 = st.columns(2)
@@ -144,8 +223,11 @@ with st.sidebar:
         if st.button("🚨 Reset", help="Reset draft to pick 1", width="stretch"):
             draft_state.reset_draft()
             st.cache_data.clear()
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
+            # Only clear draft-related session state keys
+            draft_keys = ["draft_state", "synth", "sleeper_sync"]
+            for key in draft_keys:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.toast("Draft reset completely!")
             st.rerun()
 
@@ -253,10 +335,18 @@ with tab_cmd:
             col_exp1, col_exp2 = st.columns(2)
             c_names = [c["name"] for c in candidates_list]
 
+            if "sel_opt_a" in st.session_state and st.session_state["sel_opt_a"] not in c_names:
+                del st.session_state["sel_opt_a"]
+            if "sel_opt_b" in st.session_state and st.session_state["sel_opt_b"] not in c_names:
+                del st.session_state["sel_opt_b"]
+
+            kwargs_a = {"index": 0} if "sel_opt_a" not in st.session_state else {}
+            kwargs_b = {"index": min(1, len(c_names)-1)} if "sel_opt_b" not in st.session_state else {}
+
             with col_exp1:
-                p1_name = st.selectbox("Option A", c_names, index=0, key="sel_opt_a")
+                p1_name = st.selectbox("Option A", c_names, key="sel_opt_a", **kwargs_a)
             with col_exp2:
-                p2_name = st.selectbox("Option B", c_names, index=min(1, len(c_names)-1), key="sel_opt_b")
+                p2_name = st.selectbox("Option B", c_names, key="sel_opt_b", **kwargs_b)
 
             if p1_name and p2_name and p1_name != p2_name:
                 p1_c = next(c for c in candidates_list if c["name"] == p1_name)
@@ -351,7 +441,7 @@ with tab_grid_standings:
 
     for gov in draft_state.governors:
         r_list = draft_state.rosters.get(gov, [])
-        details = standings_optimizer.get_optimal_lineup_details(r_list)
+        details = standings_optimizer.get_optimal_lineup_details(r_list, projections_df=projections_df)
         gov_details_map[gov] = details
 
         starter_val = round(details["starter_weekly_ppg"] if is_weekly else details["starter_q1_pts"], 1)

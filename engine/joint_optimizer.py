@@ -21,7 +21,7 @@ class JointOptimizer:
     def __init__(self, roster_limits: dict):
         self.roster_limits = roster_limits
 
-    def get_optimal_lineup_details(self, roster: List[Dict]) -> Dict[str, Any]:
+    def get_optimal_lineup_details(self, roster: List[Dict], projections_df=None) -> Dict[str, Any]:
         """
         Solves and returns complete details for the optimal starting lineup & bench:
           - 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE) starters.
@@ -32,6 +32,9 @@ class JointOptimizer:
           - Positional point breakdown (QB, RB, WR, TE, FLEX).
           - Best bench backup player.
           - Starters filled count (0 to 7).
+        
+        If projections_df is provided, player ufl_pts are refreshed from current
+        projections instead of using the stale snapshot from pick time.
         """
         if not roster:
             return {
@@ -57,6 +60,13 @@ class JointOptimizer:
             p_name = p_copy.get("name") or p_copy.get("player_name") or ""
             p_copy["name"] = p_name
             p_copy["player_name"] = p_name
+
+            # Refresh ufl_pts from current projections if available
+            if projections_df is not None and p_name:
+                match = projections_df[projections_df["name"] == p_name]
+                if not match.empty:
+                    p_copy["ufl_pts"] = match.iloc[0]["ufl_pts"]
+
             norm_roster.append(p_copy)
 
         qbs = sorted([p for p in norm_roster if p["position"] == "QB"], key=lambda x: x["ufl_pts"], reverse=True)
@@ -103,7 +113,7 @@ class JointOptimizer:
         starter_q1_pts = pts_qb1 + pts_qb2 + pts_rb1 + pts_wr1 + pts_te1 + pts_flex1 + pts_flex2
         starter_weekly_ppg = starter_q1_pts / 4.0
 
-        total_roster_q1_pts = sum(p["ufl_pts"] for p in roster)
+        total_roster_q1_pts = sum(p["ufl_pts"] for p in norm_roster)
         total_roster_weekly_ppg = total_roster_q1_pts / 4.0
 
         starter_efficiency_pct = (starter_q1_pts / total_roster_q1_pts * 100.0) if total_roster_q1_pts > 0 else 0.0
@@ -134,13 +144,13 @@ class JointOptimizer:
             "positional_ppg": pos_ppg
         }
 
-    def solve_weekly_starting_lineup(self, roster: List[Dict]) -> float:
+    def solve_weekly_starting_lineup(self, roster: List[Dict], projections_df=None) -> float:
         """
         Solves the exact optimal weekly starting lineup score from a list of player dicts.
         Starters: 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE).
         Vacant required starter slots score 0.0 pts!
         """
-        return self.get_optimal_lineup_details(roster)["starter_q1_pts"]
+        return self.get_optimal_lineup_details(roster, projections_df=projections_df)["starter_q1_pts"]
 
     def calculate_stack_bonus(self, player_dict: Dict, current_roster: List[Dict]) -> float:
         """
@@ -351,7 +361,10 @@ class JointOptimizer:
                 # Apply Stacking Bonus & Macro Strategy Multiplier
                 stack_bonus = self.calculate_stack_bonus(player_dict, current_roster)
                 round_no = (len(current_roster)) + 1
-                strat_mult = StrategyPresetManager.get_positional_multiplier(macro_strategy, pos, current_roster, round_no)
+                strat_mult = StrategyPresetManager.get_positional_multiplier(
+                    macro_strategy, pos, current_roster, round_no,
+                    undrafted_df=undrafted_df
+                )
                 
                 gain = round(raw_gain * stack_bonus * strat_mult, 2)
 

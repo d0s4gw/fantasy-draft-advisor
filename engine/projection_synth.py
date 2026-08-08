@@ -54,6 +54,7 @@ class ProjectionSynthesizer:
             
             filepath = os.path.join(self.sources_dir, source["filename"])
             if not os.path.exists(filepath):
+                print(f"⚠️  WARNING: Source '{source['name']}' is enabled but file '{source['filename']}' not found in data/sources/. Skipping.")
                 continue
                 
             try:
@@ -125,17 +126,22 @@ class ProjectionSynthesizer:
             elif inj_status == "QUESTIONABLE":
                 inj_mult = 0.75
 
-            # Apply manual overrides if present
+            # Apply injury multiplier to stats (single discount point)
             if inj_mult == 0.0:
                 for col in stat_cols:
                     row[col] = 0.0
-            elif "touch_multiplier" in player_override:
+            elif inj_mult < 1.0:
+                for col in stat_cols:
+                    row[col] = round(row[col] * inj_mult, 1)
+
+            # Apply manual touch_multiplier override (independent of injury mult)
+            if "touch_multiplier" in player_override and inj_mult > 0.0:
                 touch_mult = float(player_override["touch_multiplier"])
                 for col in ["rush_yds", "rush_tds", "receptions", "rec_yds", "rec_tds"]:
                     row[col] = round(row[col] * touch_mult, 1)
 
-            # Compute UFL Fantasy Points (injury multiplier applied once here)
-            ufl_pts = calculate_ufl_points(row) * inj_mult
+            # Compute UFL Fantasy Points from already-discounted stats (no second multiplier)
+            ufl_pts = calculate_ufl_points(row)
             row["ufl_pts"] = round(ufl_pts, 2)
             row["points_per_game"] = round(ufl_pts / 4.0, 1)
             row["injury_status"] = inj_status
