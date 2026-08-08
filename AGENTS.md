@@ -41,7 +41,7 @@ fantasy-draft-advisor/
 ├── ROADMAP.md                        # Feature roadmap & deferred per-week projections plan
 ├── app.py                            # Primary Streamlit web application dashboard UI
 ├── import_fantasypros.py             # FantasyPros CSV projection converter & dataset builder
-├── refresh_draft_data.py             # Live Sleeper injury tracker & source status updater
+├── refresh_draft_data.py             # Live Sleeper injury tracker & source status updater (supports --offline)
 ├── run_mock_draft.py                 # Full 72-pick (12 round) mock draft simulation harness
 ├── run_variance_simulation.py        # Monte Carlo high-variance strategy stress-tester
 ├── test_system.py                    # Complete end-to-end unit and integration test suite
@@ -52,7 +52,7 @@ fantasy-draft-advisor/
 │   ├── config.json                   # League settings, governors list, roster limits
 │   ├── draft_state.json              # Active draft state & pick history persistence
 │   ├── sleeper_players.json          # Cached Sleeper API player mapping database
-│   ├── sources.json                  # Projection source weighting and column mapping config
+│   ├── sources.json                  # Projection source weighting and auto-fetch config
 │   └── sources/                      # Raw projection CSV exports from external providers
 │       ├── baseline_2026.csv
 │       └── fantasypros.csv
@@ -67,6 +67,7 @@ fantasy-draft-advisor/
 │   ├── joint_optimizer.py            # Knapsack portfolio, marginal gain & War Room matrix calculator
 │   ├── live_math_engine.py           # Core Live Joint VORP, strategy preset & decision matrix engine
 │   ├── opponent_predictor.py         # Draft board matrix analyzer & opponent target predictor
+│   ├── projection_fetchers.py        # Multi-source auto-fetcher, sanity guardrails & progress manager
 │   ├── projection_synth.py           # Multi-source weighted projection synthesizer
 │   ├── scoring.py                    # Centralized UFL fantasy scoring formulas
 │   ├── sleeper_sync.py               # Sleeper API live draft auto-polling client
@@ -83,20 +84,20 @@ fantasy-draft-advisor/
 ## 3. Subsystem Architecture & Data Flow
 
 ```
-[Raw CSV Projections] ──► [ProjectionSynthesizer] ──► [UFL Scoring Math]
-                                                             │
-[Sleeper API Poller]  ──► [DraftState Persistence] ──────────┤
-                                                             ▼
-                                                    [VORPCalculator & JointOptimizer]
-                                                             │
-                                                             ▼
-                                        [LiveMathEngine + Strategy Presets]
-                                                             │
-                                                             ▼
-                                        [Turn Strategy War Room Decision Matrix]
-                                                             │
-                                                             ▼
-                                                [Streamlit App Dashboard UI]
+[Sleeper API / ~/Downloads / Web Scraper] ──► [DataSanityGuard] ──► [ProjectionSynthesizer] ──► [UFL Scoring Math]
+                                                                                                    │
+[Sleeper API Poller]                      ──► [DraftState Persistence] ─────────────────────────────┤
+                                                                                                    ▼
+                                                                                           [VORPCalculator & JointOptimizer]
+                                                                                                    │
+                                                                                                    ▼
+                                                                               [LiveMathEngine + Strategy Presets]
+                                                                                                    │
+                                                                                                    ▼
+                                                                               [Turn Strategy War Room Decision Matrix]
+                                                                                                    │
+                                                                                                    ▼
+                                                                                      [Streamlit App Dashboard UI]
 ```
 
 ---
@@ -110,16 +111,17 @@ fantasy-draft-advisor/
   - `picks_until_my_turn()`: Number of picks remaining before user's next selection.
   - `record_pick()` / `undo_last_pick()`: Full stack-based history mutation with auto-save to `data/draft_state.json`.
 
-### B. UFL Math & Projection Synthesizer (`engine/projection_synth.py`, `engine/scoring.py`)
-- Reads configured projection CSV sources from `data/sources/` using rules in `data/sources.json`.
-- Normalizes column names (e.g. `PassYds`, `RushYds`, `Rec`) across different provider formats.
-- Applies custom UFL scoring formula:
+### B. UFL Math & Projection Synthesizer (`engine/projection_synth.py`, `engine/scoring.py`, `engine/projection_fetchers.py`)
+- **Auto-Fetch Pipeline (`FetcherManager`)**: Runs automatically at startup (Streamlit & CLI), scanning `~/Downloads` for fresh FantasyPros CSV exports, scraping live web tables as backup, and syncing Sleeper API injuries.
+- **Data Quality Guardrails (`DataSanityGuard`)**: Validates row counts ($\ge 20$ players) and schemas before updating source files to prevent corrupt overwrites.
+- **Name Suffix Normalization (`normalize_player_name`)**: Standardizes suffixes (`Jr.`, `III`, `II`, `Sr.`) for clean cross-source player matching.
+- Normalizes column names and applies custom UFL scoring formula:
   $$\text{UFL Pts} = (\text{RushYds} + \text{RecYds}) \times 0.20 + (\text{RushTD} + \text{RecTD}) \times 6.0 + \text{PassYds} \times 0.04 + \text{PassTD} \times 4.0 - \text{INT} \times 2.0 + \text{Rec} \times 0.3$$
 
 ### C. Joint Portfolio Optimizer & VORP (`engine/joint_optimizer.py`, `engine/vorp_calculator.py`)
 - Computes exact **Marginal Portfolio Gain** for every available player using 4-week Knapsack solver.
 - Evaluates candidate picks against the user's current roster rather than static baseline replacements.
-- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs remain $\le 3$ and user has $< 2$ QBs before an extended pick wait.
+- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs ($\ge 35.0$ UFL pts for 4-week Q1) remain $\le 3$ and user has $< 2$ QBs before an extended pick wait.
 
 ### D. Recommendation & Turn Strategy Engine (`engine/live_math_engine.py`, `engine/joint_optimizer.py`)
 - **Live Math Engine (`LiveMathEngine`)**: Real-time sub-millisecond Knapsack VORP, starter standings, and opponent scarcity optimizer.
@@ -134,13 +136,22 @@ fantasy-draft-advisor/
 ```bash
 streamlit run app.py
 ```
-App will serve on `http://localhost:8501`.
+App will serve on `http://localhost:8501`. Automatically fetches live projections and displays terminal progress logging.
 
-### 2. Run System Test Suite
+### 2. Run Pre-Draft Data Refresh Pipeline
+```bash
+python refresh_draft_data.py
+```
+To run in instant zero-latency offline mode:
+```bash
+python refresh_draft_data.py --offline
+```
+
+### 3. Run System Test Suite
 ```bash
 python test_system.py
 ```
-Validates projection synth, draft state, VORP math, fuzzy search, and engine recommendations.
+Validates auto-fetchers, sanity guardrails, name normalization, projection synth, draft state, VORP math, fuzzy search, and engine recommendations.
 
 ### 3. Run Full 72-Pick Mock Draft Simulation
 ```bash

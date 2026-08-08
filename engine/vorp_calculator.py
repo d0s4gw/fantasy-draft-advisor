@@ -87,7 +87,7 @@ class VORPCalculator:
             drop_1_to_2 = top_pts - second_pts
             drop_2_to_3 = second_pts - third_pts
 
-            if drop_1_to_2 >= 15.0 or (top_pts >= 120.0 and len(pos_df) <= 3):
+            if drop_1_to_2 >= 15.0 or (top_pts >= 50.0 and len(pos_df) <= 3):
                 cliffs.append({
                     "position": pos,
                     "top_player": pos_df.iloc[0]["name"],
@@ -115,12 +115,14 @@ class VORPCalculator:
     def check_qb_squeeze(self, df: pd.DataFrame, draft_state) -> Tuple[bool, str]:
         """
         Checks if opponents are hoarding QBs and triggering a QB supply squeeze.
+        Calibrated for Q1 UFL 4-week scoring (top QBs score ~35–50 UFL pts).
         """
         if not draft_state or df.empty:
             return False, ""
 
         undrafted_qbs = df[(df["position"] == "QB") & (~df["name"].apply(draft_state.is_drafted))]
-        top_tier_qbs = undrafted_qbs[undrafted_qbs["ufl_pts"] >= 70.0]
+        # Top-tier QBs for Q1 UFL scoring (>= 35.0 UFL pts for 4 weeks)
+        top_tier_qbs = undrafted_qbs[undrafted_qbs["ufl_pts"] >= 35.0]
 
         my_qb_count = draft_state.get_governor_roster_breakdown(draft_state.my_team)["QB"]
         picks_remaining = draft_state.picks_until_my_turn()

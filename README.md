@@ -32,6 +32,11 @@ A high-speed, single-user local Python application built for high-stakes fantasy
    - Monitors draft matrix across all 6 Governors (`Team 1 (User)`, `Team 2`, `Team 3`, `Team 4`, `Team 5`, `Team 6`).
    - Flags when opponents picking before your turn are about to hoard or target your position.
 
+7. **Automated Startup Multi-Source Ingestor & Offline Mode**:
+   - Runs automatically at startup (Streamlit & CLI), scanning `~/Downloads` for fresh FantasyPros exports, scraping live web tables as backup, and syncing Sleeper API injuries.
+   - Includes data quality guardrails (`DataSanityGuard`) and name suffix normalization (`normalize_player_name`).
+   - Supports `--offline` mode for zero-latency drafting at venues without Wi-Fi.
+
 ---
 
 ## Quick Start Instructions
@@ -40,9 +45,18 @@ A high-speed, single-user local Python application built for high-stakes fantasy
 ```bash
 ./venv/bin/streamlit run app.py
 ```
-App will open automatically in your browser at `http://localhost:8501`.
+App will open automatically in your browser at `http://localhost:8501`. Startup progress streams directly to your terminal console.
 
-### 2. Run System Test Suite
+### 2. Run Pre-Draft Refresh Pipeline (Live & Offline)
+```bash
+python refresh_draft_data.py
+```
+For zero-latency offline drafting:
+```bash
+python refresh_draft_data.py --offline
+```
+
+### 3. Run System Test Suite
 ```bash
 python test_system.py
 ```

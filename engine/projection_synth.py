@@ -8,6 +8,7 @@ import os
 import json
 import pandas as pd
 from engine.scoring import calculate_ufl_points
+from engine.projection_fetchers import normalize_player_name, FetcherManager
 
 class ProjectionSynthesizer:
     def __init__(self, data_dir: str):
@@ -62,6 +63,7 @@ class ProjectionSynthesizer:
                 if not all(col in df.columns for col in required_cols):
                     continue
                     
+                df["name"] = df["name"].apply(normalize_player_name)
                 df["source_weight"] = float(source.get("weight", 1.0))
                 dfs.append(df)
             except Exception as e:

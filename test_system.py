@@ -72,6 +72,28 @@ def test_vorp_and_joint_optimizer():
     
     squeeze, msg = calc.check_qb_squeeze(df, ds)
     assert isinstance(squeeze, bool), "check_qb_squeeze must return bool"
+
+    # Test JointOptimizer.get_optimal_lineup_details
+    from engine.joint_optimizer import JointOptimizer
+    optimizer = JointOptimizer(ds.roster_limits)
+    mock_roster = [
+        {"name": "QB 1", "position": "QB", "team": "BUF", "ufl_pts": 100.0},
+        {"name": "QB 2", "position": "QB", "team": "KC", "ufl_pts": 90.0},
+        {"name": "QB 3", "position": "QB", "team": "BAL", "ufl_pts": 80.0},
+        {"name": "RB 1", "position": "RB", "team": "SF", "ufl_pts": 70.0},
+        {"name": "RB 2", "position": "RB", "team": "PHI", "ufl_pts": 60.0},
+        {"name": "WR 1", "position": "WR", "team": "MIN", "ufl_pts": 50.0},
+        {"name": "WR 2", "position": "WR", "team": "MIA", "ufl_pts": 40.0},
+        {"name": "TE 1", "position": "TE", "team": "KC", "ufl_pts": 30.0},
+    ]
+    details = optimizer.get_optimal_lineup_details(mock_roster)
+    assert details["starter_q1_pts"] == 100 + 90 + 70 + 50 + 30 + 60 + 40, "Starter Q1 pts mismatch"
+    assert details["starter_weekly_ppg"] == details["starter_q1_pts"] / 4.0, "PPG math mismatch"
+    assert details["starters"]["QB1"]["name"] == "QB 1", "QB1 mismatch"
+    assert details["starters"]["FLEX1"]["name"] == "RB 2", "FLEX1 mismatch"
+    assert details["starters_filled"] == 7, "All 7 starters should be filled"
+    assert details["best_bench_player"]["name"] == "QB 3", "Best bench player mismatch"
+    assert details["starter_efficiency_pct"] > 80.0, "Starter efficiency should be > 80%"
     print("  ✅ VORPCalculator & JointOptimizer passed!")
 
 def test_strategy_presets_and_cliffs():
@@ -243,6 +265,36 @@ def test_turn_decision_matrix():
     ds.reset_draft()
     print("  ✅ Turn Strategy War Room (Decision Matrix) passed!")
 
+def test_auto_fetchers_and_sanity_guard():
+    print("Testing Projection Fetchers, Name Normalization & Sanity Guard...")
+    import pandas as pd
+    from engine.projection_fetchers import normalize_player_name, DataSanityGuard, FetcherManager
+
+    # 1. Test Name Normalization
+    assert normalize_player_name("Kenneth Walker III") == "Kenneth Walker"
+    assert normalize_player_name("Marquise Brown Jr.") == "Marquise Brown"
+    assert normalize_player_name("Patrick Mahomes II") == "Patrick Mahomes"
+    assert normalize_player_name("  Christian McCaffrey  ") == "Christian McCaffrey"
+
+    # 2. Test DataSanityGuard
+    empty_df = pd.DataFrame()
+    v1, msg1 = DataSanityGuard.validate(empty_df, "test")
+    assert not v1, "Sanity guard should fail on empty DataFrame"
+
+    valid_mock = pd.DataFrame([
+        {"name": f"Player_{i}", "position": "QB" if i < 10 else "RB", "team": "KC", "pass_yds": 100.0, "rush_yds": 50.0}
+        for i in range(30)
+    ])
+    v2, msg2 = DataSanityGuard.validate(valid_mock, "test", min_players=20)
+    assert v2, f"Sanity guard should pass valid mock DataFrame: {msg2}"
+
+    # 3. Test FetcherManager Offline Mode
+    manager = FetcherManager(DATA_DIR, offline=True)
+    matrix = manager.run_pipeline()
+    assert isinstance(matrix, dict), "FetcherManager pipeline should return a health matrix dict"
+    assert matrix["sleeper"]["status"] in ["HEALTHY", "CACHED"], "Sleeper status in matrix should be valid"
+    print("  ✅ Projection Fetchers, Name Normalization & Sanity Guard passed!")
+
 def run_all_tests():
     print("=" * 60)
     print("🏈 RUNNING UFL DRAFT ADVISOR SYSTEM TEST SUITE")
@@ -256,6 +308,7 @@ def run_all_tests():
     test_engines()
     test_turn_decision_matrix()
     test_bug_fixes()
+    test_auto_fetchers_and_sanity_guard()
     print("=" * 60)
     print("🎉 ALL SYSTEM TESTS PASSED CLEANLY!")
     print("=" * 60)

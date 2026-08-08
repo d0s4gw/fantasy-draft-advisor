@@ -15,6 +15,7 @@ The `engine/` directory contains all calculation, simulation, optimization, sear
 | [joint_optimizer.py](joint_optimizer.py) | Knapsack optimization for portfolio VORP | `JointOptimizer` | `draft_state.py` |
 | [vorp_calculator.py](vorp_calculator.py) | Dynamic portfolio VORP & QB squeeze solver | `VORPCalculator` | `joint_optimizer.py` |
 | [opponent_predictor.py](opponent_predictor.py) | Draft board analysis & opponent steal prediction | `OpponentPredictor` | `draft_state.py` |
+| [projection_fetchers.py](projection_fetchers.py) | Multi-source auto-fetcher, sanity guardrails & progress manager | `FetcherManager`, `BaseFetcher`, `DataSanityGuard` | Requests, BeautifulSoup, `data/sources.json` |
 | [fuzzy_search.py](fuzzy_search.py) | Rapid shorthand & fuzzy player search | `FuzzySearcher` | Difflib |
 | [sleeper_sync.py](sleeper_sync.py) | Sleeper API live draft polling & auto-sync | `SleeperSync` | Requests, `data/sleeper_players.json` |
 | [strategy_presets.py](strategy_presets.py) | Dynamic strategy presets & weight overrides | `StrategyPresetManager`, `STRATEGY_PRESETS` | Standard dictionary |

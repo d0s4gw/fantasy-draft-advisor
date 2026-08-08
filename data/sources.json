@@ -5,21 +5,26 @@
       "name": "Baseline Consensus 2026",
       "filename": "baseline_2026.csv",
       "weight": 1.0,
-      "enabled": true
+      "enabled": true,
+      "auto_fetch": false
     },
     {
       "id": "fantasypros",
       "name": "FantasyPros Projections",
       "filename": "fantasypros.csv",
       "weight": 1.2,
-      "enabled": true
+      "enabled": true,
+      "auto_fetch": true,
+      "fetcher_type": "fantasypros_downloads",
+      "cache_ttl_hours": 12
     },
     {
       "id": "underdog",
       "name": "Underdog / ETR Projections",
       "filename": "underdog.csv",
       "weight": 1.5,
-      "enabled": true
+      "enabled": true,
+      "auto_fetch": false
     }
   ]
 }

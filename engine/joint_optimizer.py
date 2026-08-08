@@ -21,35 +21,126 @@ class JointOptimizer:
     def __init__(self, roster_limits: dict):
         self.roster_limits = roster_limits
 
+    def get_optimal_lineup_details(self, roster: List[Dict]) -> Dict[str, Any]:
+        """
+        Solves and returns complete details for the optimal starting lineup & bench:
+          - 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE) starters.
+          - 5 Bench players.
+          - Starter Q1 Pts & Weekly PPG.
+          - Total Roster Q1 Pts & Weekly PPG.
+          - Starter Efficiency % (Starter Pts / Roster Pts * 100).
+          - Positional point breakdown (QB, RB, WR, TE, FLEX).
+          - Best bench backup player.
+          - Starters filled count (0 to 7).
+        """
+        if not roster:
+            return {
+                "starters": {
+                    "QB1": None, "QB2": None, "RB1": None, "WR1": None,
+                    "TE1": None, "FLEX1": None, "FLEX2": None
+                },
+                "bench": [],
+                "starter_q1_pts": 0.0,
+                "starter_weekly_ppg": 0.0,
+                "total_roster_q1_pts": 0.0,
+                "total_roster_weekly_ppg": 0.0,
+                "starter_efficiency_pct": 0.0,
+                "starters_filled": 0,
+                "best_bench_player": None,
+                "positional_breakdown": {"QB": 0.0, "RB": 0.0, "WR": 0.0, "TE": 0.0, "FLEX": 0.0},
+                "positional_ppg": {"QB": 0.0, "RB": 0.0, "WR": 0.0, "TE": 0.0, "FLEX": 0.0}
+            }
+
+        norm_roster = []
+        for p in roster:
+            p_copy = dict(p)
+            p_name = p_copy.get("name") or p_copy.get("player_name") or ""
+            p_copy["name"] = p_name
+            p_copy["player_name"] = p_name
+            norm_roster.append(p_copy)
+
+        qbs = sorted([p for p in norm_roster if p["position"] == "QB"], key=lambda x: x["ufl_pts"], reverse=True)
+        rbs = sorted([p for p in norm_roster if p["position"] == "RB"], key=lambda x: x["ufl_pts"], reverse=True)
+        wrs = sorted([p for p in norm_roster if p["position"] == "WR"], key=lambda x: x["ufl_pts"], reverse=True)
+        tes = sorted([p for p in norm_roster if p["position"] == "TE"], key=lambda x: x["ufl_pts"], reverse=True)
+
+        qb1 = qbs[0] if len(qbs) >= 1 else None
+        qb2 = qbs[1] if len(qbs) >= 2 else None
+
+        rb1 = rbs[0] if len(rbs) >= 1 else None
+        wr1 = wrs[0] if len(wrs) >= 1 else None
+        te1 = tes[0] if len(tes) >= 1 else None
+
+        # Remaining pool for FLEX & Bench
+        flex_pool = rbs[1:] + wrs[1:] + tes[1:]
+        flex_pool = sorted(flex_pool, key=lambda x: x["ufl_pts"], reverse=True)
+
+        flex1 = flex_pool[0] if len(flex_pool) >= 1 else None
+        flex2 = flex_pool[1] if len(flex_pool) >= 2 else None
+
+        # Bench players: any QBs beyond top 2, and any flex_pool players beyond top 2
+        bench = qbs[2:] + flex_pool[2:]
+        bench = sorted(bench, key=lambda x: x["ufl_pts"], reverse=True)
+
+        starters = {
+            "QB1": qb1,
+            "QB2": qb2,
+            "RB1": rb1,
+            "WR1": wr1,
+            "TE1": te1,
+            "FLEX1": flex1,
+            "FLEX2": flex2
+        }
+
+        pts_qb1 = qb1["ufl_pts"] if qb1 else 0.0
+        pts_qb2 = qb2["ufl_pts"] if qb2 else 0.0
+        pts_rb1 = rb1["ufl_pts"] if rb1 else 0.0
+        pts_wr1 = wr1["ufl_pts"] if wr1 else 0.0
+        pts_te1 = te1["ufl_pts"] if te1 else 0.0
+        pts_flex1 = flex1["ufl_pts"] if flex1 else 0.0
+        pts_flex2 = flex2["ufl_pts"] if flex2 else 0.0
+
+        starter_q1_pts = pts_qb1 + pts_qb2 + pts_rb1 + pts_wr1 + pts_te1 + pts_flex1 + pts_flex2
+        starter_weekly_ppg = starter_q1_pts / 4.0
+
+        total_roster_q1_pts = sum(p["ufl_pts"] for p in roster)
+        total_roster_weekly_ppg = total_roster_q1_pts / 4.0
+
+        starter_efficiency_pct = (starter_q1_pts / total_roster_q1_pts * 100.0) if total_roster_q1_pts > 0 else 0.0
+        starters_filled = sum(1 for s in starters.values() if s is not None)
+        best_bench_player = bench[0] if bench else None
+
+        pos_breakdown = {
+            "QB": pts_qb1 + pts_qb2,
+            "RB": pts_rb1,
+            "WR": pts_wr1,
+            "TE": pts_te1,
+            "FLEX": pts_flex1 + pts_flex2
+        }
+
+        pos_ppg = {k: v / 4.0 for k, v in pos_breakdown.items()}
+
+        return {
+            "starters": starters,
+            "bench": bench,
+            "starter_q1_pts": starter_q1_pts,
+            "starter_weekly_ppg": starter_weekly_ppg,
+            "total_roster_q1_pts": total_roster_q1_pts,
+            "total_roster_weekly_ppg": total_roster_weekly_ppg,
+            "starter_efficiency_pct": starter_efficiency_pct,
+            "starters_filled": starters_filled,
+            "best_bench_player": best_bench_player,
+            "positional_breakdown": pos_breakdown,
+            "positional_ppg": pos_ppg
+        }
+
     def solve_weekly_starting_lineup(self, roster: List[Dict]) -> float:
         """
         Solves the exact optimal weekly starting lineup score from a list of player dicts.
         Starters: 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE).
         Vacant required starter slots score 0.0 pts!
         """
-        if not roster:
-            return 0.0
-
-        qbs = sorted([p for p in roster if p["position"] == "QB"], key=lambda x: x["ufl_pts"], reverse=True)
-        rbs = sorted([p for p in roster if p["position"] == "RB"], key=lambda x: x["ufl_pts"], reverse=True)
-        wrs = sorted([p for p in roster if p["position"] == "WR"], key=lambda x: x["ufl_pts"], reverse=True)
-        tes = sorted([p for p in roster if p["position"] == "TE"], key=lambda x: x["ufl_pts"], reverse=True)
-
-        pts_qb1 = qbs[0]["ufl_pts"] if len(qbs) >= 1 else 0.0
-        pts_qb2 = qbs[1]["ufl_pts"] if len(qbs) >= 2 else 0.0
-        
-        pts_rb1 = rbs[0]["ufl_pts"] if len(rbs) >= 1 else 0.0
-        pts_wr1 = wrs[0]["ufl_pts"] if len(wrs) >= 1 else 0.0
-        pts_te1 = tes[0]["ufl_pts"] if len(tes) >= 1 else 0.0
-
-        flex_pool = rbs[1:] + wrs[1:] + tes[1:]
-        flex_pool = sorted(flex_pool, key=lambda x: x["ufl_pts"], reverse=True)
-        
-        pts_flex1 = flex_pool[0]["ufl_pts"] if len(flex_pool) >= 1 else 0.0
-        pts_flex2 = flex_pool[1]["ufl_pts"] if len(flex_pool) >= 2 else 0.0
-
-        total_lineup = pts_qb1 + pts_qb2 + pts_rb1 + pts_wr1 + pts_te1 + pts_flex1 + pts_flex2
-        return total_lineup
+        return self.get_optimal_lineup_details(roster)["starter_q1_pts"]
 
     def calculate_stack_bonus(self, player_dict: Dict, current_roster: List[Dict]) -> float:
         """

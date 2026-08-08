@@ -5,10 +5,12 @@ re-synthesizes weighted UFL scoring math, and regenerates data/precomputed_gamep
 """
 
 import os
+import sys
 import json
 import urllib.request
 import pandas as pd
 from engine.projection_synth import ProjectionSynthesizer
+from engine.projection_fetchers import FetcherManager, normalize_player_name
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -19,29 +21,9 @@ SLEEPER_API_URL = "https://api.sleeper.app/v1/players/nfl"
 
 def fetch_sleeper_players() -> dict:
     """Fetches live player data from Sleeper API or loads cached JSON."""
-    print("📡 Connecting to Sleeper API for live NFL player & injury status...")
-    try:
-        import ssl
-        context = ssl._create_unverified_context()
-        req = urllib.request.Request(SLEEPER_API_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, context=context, timeout=10) as response:
-            if response.status == 200:
-                data = json.loads(response.read().decode())
-                # Cache response
-                with open(SLEEPER_PLAYERS_PATH, "w") as f:
-                    json.dump(data, f)
-                print(f"  ✅ Successfully fetched {len(data)} player records from Sleeper API!")
-                return data
-    except Exception as e:
-        print(f"  ⚠️ Could not reach Sleeper API ({e}). Checking local cache...")
-        
     if os.path.exists(SLEEPER_PLAYERS_PATH):
         with open(SLEEPER_PLAYERS_PATH, "r") as f:
-            data = json.load(f)
-            print(f"  ✅ Loaded {len(data)} cached player records from local cache.")
-            return data
-            
-    print("  ⚠️ No Sleeper player data available. Proceeding with existing CSV sources.")
+            return json.load(f)
     return {}
 
 def extract_injury_map(sleeper_data: dict) -> dict:
@@ -63,9 +45,8 @@ def extract_injury_map(sleeper_data: dict) -> dict:
         inj_status = p_info.get("injury_status")
         status = p_info.get("status")
         
-        norm_name = name.strip().lower()
+        norm_name = normalize_player_name(name).lower()
         
-        # Check active injury / PUP / IR status
         if inj_status in ["IR", "PUP", "Out", "Doubtful", "Questionable"]:
             injury_map[norm_name] = inj_status.upper()
         elif status in ["IR", "PUP"]:
@@ -86,7 +67,7 @@ def update_csv_sources(injury_map: dict):
                 df = pd.read_csv(filepath)
                 if "name" in df.columns:
                     df["injury_status"] = df["name"].apply(
-                        lambda n: injury_map.get(str(n).strip().lower(), "HEALTHY")
+                        lambda n: injury_map.get(normalize_player_name(str(n)).lower(), "HEALTHY")
                     )
                     df.to_csv(filepath, index=False)
                     updated_files += 1
@@ -96,14 +77,13 @@ def update_csv_sources(injury_map: dict):
     print(f"  ✅ Updated injury status across {updated_files} projection CSV sources!")
 
 def main():
-    print("=" * 75)
-    print("🏈 RUNNING AUTOMATED PRE-DRAFT REFRESH PIPELINE & INJURY TRACKER")
-    print("=" * 75)
-    
-    # 1. Fetch live Sleeper players & injury status
+    offline_mode = "--offline" in sys.argv
+    manager = FetcherManager(DATA_DIR, offline=offline_mode)
+    manager.run_pipeline()
+
+    # 1. Extract injury map from Sleeper data
     sleeper_data = fetch_sleeper_players()
     injury_map = extract_injury_map(sleeper_data)
-    
     injured_count = len(injury_map)
     print(f"  🏥 Identified {injured_count} players with active injury/PUP/IR designations.")
     
@@ -129,7 +109,6 @@ def main():
     else:
         print("  🎉 No key starter players currently marked as injured!")
 
-    # 5. Pipeline Complete
     print("\n" + "=" * 75)
     print("🎉 PRE-DRAFT DATA REFRESH COMPLETE! YOUR DRAFT ADVISOR IS 100% UPDATED.")
     print("=" * 75)
