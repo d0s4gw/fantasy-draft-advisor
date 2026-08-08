@@ -25,9 +25,13 @@ Replace the flat 4-week aggregate projection model with per-week stat projection
 
 ---
 
-### Known Data Issues (as of 2026-08-04)
-- **Tua Tagovailoa** listed as MIA QB — he's now on the **Atlanta Falcons**
-- **George Kittle** has full Q1 projections despite being on the **PUP list** (Achilles rehab, Week 1 uncertain)
-- **Malik Nabers** (WR, NYG) not in the database — ACL recovery, possible Q1 contributor
-- **Zach Charbonnet** (RB, SEA) not in top-60, on training camp injury report
-- General staleness: team changes, free agency moves, and rookie additions since data was last seeded
+## Recently Completed
+
+### Optimal Roster Lineup & Draft Results Projections
+**Status**: Completed (August 2026)
+Added a dedicated **Draft Results** tab in `app.py` displaying optimal starting lineup weekly (W1–W4 average) and 4-week quarter projections for all 6 teams, based on custom UFL scoring rules and roster constraints, along with stacked positional composition charts.
+
+### Automated Data Ingestion & Injury Sync
+**Status**: Completed (August 2026)
+Built `refresh_draft_data.py` and `projection_fetchers.py` to handle automated FantasyPros CSV ingestion from `~/Downloads`, live web scraping fallbacks, and real-time Sleeper API injury status synchronization (`PUP`, `QUESTIONABLE`, `OUT`, `IR`).
+
