@@ -67,9 +67,19 @@ if "synth" not in st.session_state:
 if "sleeper_sync" not in st.session_state:
     st.session_state.sleeper_sync = SleeperSync(DATA_DIR)
 
+if "skipped_this_pick" not in st.session_state:
+    st.session_state.skipped_this_pick = set()
+
 draft_state = st.session_state.draft_state
 synth = st.session_state.synth
 sleeper_sync = st.session_state.sleeper_sync
+
+# Auto-clear skipped_this_pick when pick number changes
+curr_pick_i_init = draft_state.current_pick_info()
+curr_pick_no_init = curr_pick_i_init["pick_no"] if curr_pick_i_init else 73
+if st.session_state.get("last_seen_pick_no") != curr_pick_no_init:
+    st.session_state.skipped_this_pick = set()
+    st.session_state.last_seen_pick_no = curr_pick_no_init
 
 @st.cache_data
 def load_projections(_synth, _data_dir: str):
@@ -224,7 +234,7 @@ with st.sidebar:
             draft_state.reset_draft()
             st.cache_data.clear()
             # Only clear draft-related session state keys
-            draft_keys = ["draft_state", "synth", "sleeper_sync"]
+            draft_keys = ["draft_state", "synth", "sleeper_sync", "skipped_this_pick", "last_seen_pick_no"]
             for key in draft_keys:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -232,8 +242,13 @@ with st.sidebar:
             st.rerun()
 
 # Compute VORP & Threat Matrix
+if st.session_state.skipped_this_pick:
+    rec_projections_df = projections_df[~projections_df["name"].isin(st.session_state.skipped_this_pick)].copy()
+else:
+    rec_projections_df = projections_df
+
 vorp_calc = VORPCalculator(draft_state.roster_limits)
-vorp_df = vorp_calc.compute_vorp(projections_df, draft_state, macro_strategy=selected_strategy_key, mode=selected_vorp_mode)
+vorp_df = vorp_calc.compute_vorp(rec_projections_df, draft_state, macro_strategy=selected_strategy_key, mode=selected_vorp_mode)
 opponent_predictor = OpponentPredictor(draft_state)
 vorp_df = opponent_predictor.flag_at_risk_players(vorp_df)
 
@@ -287,7 +302,25 @@ with tab_cmd:
             if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
                 p_info = projections_df[projections_df["name"] == best_candidate['name']].iloc[0]
                 draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=on_clock_gov)
+                st.session_state.skipped_this_pick.clear()
                 st.toast(f"Slammed {best_candidate['name']} to {on_clock_gov}!")
+                st.rerun()
+
+            if st.button("⏳ Not yet", width="stretch", help=f"Skip {best_candidate['name']} for Pick #{curr_pick_i['pick_no'] if curr_pick_i else ''}"):
+                st.session_state.skipped_this_pick.add(best_candidate['name'])
+                st.toast(f"Skipped {best_candidate['name']} for current pick!")
+                st.rerun()
+
+    # SKIPPED PLAYERS BANNER FOR ACTIVE PICK
+    if st.session_state.skipped_this_pick:
+        c_skip1, c_skip2 = st.columns([4, 1])
+        with c_skip1:
+            skipped_names = ", ".join(sorted(st.session_state.skipped_this_pick))
+            st.caption(f"⏳ **Skipped for Pick #{curr_pick_i['pick_no'] if curr_pick_i else ''}**: `{skipped_names}`")
+        with c_skip2:
+            if st.button("↩️ Reset Skips", key="btn_reset_skips", width="stretch", help="Restore all skipped players for this pick"):
+                st.session_state.skipped_this_pick.clear()
+                st.toast("Restored all skipped players!")
                 st.rerun()
 
     st.markdown("---")
@@ -304,7 +337,7 @@ with tab_cmd:
                 st.cache_data.clear()
                 st.rerun()
 
-        war_room_data = active_engine.generate_war_room_matrix(projections_df, draft_state, macro_strategy=selected_strategy_key)
+        war_room_data = active_engine.generate_war_room_matrix(rec_projections_df, draft_state, macro_strategy=selected_strategy_key)
         candidates_list = war_room_data.get("candidates", [])
 
         if not candidates_list:

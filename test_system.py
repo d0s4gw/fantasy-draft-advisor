@@ -163,7 +163,13 @@ def test_engines():
     assert isinstance(rec2, dict), "LiveMathEngine recommendation should be a dict"
     assert rec2["best_decision"] is not None, "LiveMathEngine best_decision should not be None"
     assert "Live Joint Math" in rec2["engine_name"], f"Engine name mismatch: {rec2['engine_name']}"
-    print("  ✅ Recommendation Engine passed!")
+
+    # Test 'Not yet' skipping shift
+    top_p = rec2["best_decision"]["name"]
+    filtered_df = df[~df["name"].isin([top_p])].copy()
+    rec_skipped = e2.recommend(filtered_df, ds)
+    assert rec_skipped["best_decision"]["name"] != top_p, "Skipped top player should not be recommended"
+    print("  ✅ Recommendation Engine & Player Skipping passed!")
 
 def test_bug_fixes():
     print("Testing Bug & Flaw Remediation Specifics...")
