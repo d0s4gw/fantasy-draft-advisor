@@ -101,18 +101,10 @@ The `data/` directory houses configuration settings, draft state tracking persis
 {
   "sources": [
     {
-      "id": "baseline",
-      "name": "Baseline Consensus 2026",
-      "filename": "baseline_2026.csv",
-      "weight": 1.0,
-      "enabled": true,
-      "auto_fetch": false
-    },
-    {
       "id": "fantasypros",
       "name": "FantasyPros Projections",
       "filename": "fantasypros.csv",
-      "weight": 1.2,
+      "weight": 1.0,
       "enabled": true,
       "auto_fetch": true,
       "fetcher_type": "fantasypros_downloads",

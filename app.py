@@ -84,10 +84,11 @@ if st.session_state.get("last_seen_pick_no") != curr_pick_no_init:
 @st.cache_data
 def load_projections(_synth, _data_dir: str):
     manager = FetcherManager(_data_dir)
-    manager.run_pipeline()
-    return _synth.synthesize()
+    health_matrix = manager.run_pipeline()
+    df = _synth.synthesize()
+    return df, health_matrix
 
-projections_df = load_projections(synth, DATA_DIR)
+projections_df, health_matrix = load_projections(synth, DATA_DIR)
 
 if projections_df.empty:
     st.error("⚠️ **No projection data available.** Check that CSV source files exist in `data/sources/` and at least one source is enabled in `data/sources.json`.")
@@ -105,6 +106,20 @@ fuzzy_searcher = FuzzySearcher(projections_df["name"].tolist())
 with st.sidebar:
     st.title("Draft Command Center")
     st.caption(f"Target: {draft_state.config.get('target_quarter', 'Q1')} (Weeks 1–4) • User: `{draft_state.my_team}`")
+
+    # EXPANDER: LIVE DATA SOURCES & PUBLISHED DATES LOGGING
+    with st.popover("📡 Data sources status", icon=":material/dataset:", width="stretch"):
+        st.markdown("#### Live Ingestion & Published Dates")
+        for src_key, info in health_matrix.items():
+            s_name = info.get("name", src_key.title())
+            s_status = info.get("status", "UNKNOWN")
+            s_count = info.get("players", 0)
+            s_date = info.get("published_date", "Today")
+            if s_status in ["HEALTHY", "CACHED"]:
+                st.markdown(f"✅ **{s_name}**  \n`{s_count}` players collected • **Published/Updated**: `{s_date}`")
+            else:
+                st.markdown(f"⚠️ **{s_name}**: `{s_status}` (`{s_count}` players)")
+        st.caption(f"Total Combined Synthesis: **{len(projections_df)}** players")
 
     # POPOVER 1: STRATEGY SETTINGS
     with st.popover("⚙️ Strategy settings", icon=":material/tune:", width="stretch"):

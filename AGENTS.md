@@ -62,7 +62,6 @@ fantasy-draft-advisor/
 │   ├── sleeper_players.json          # Cached Sleeper API player mapping database
 │   ├── sources.json                  # Projection source weighting and auto-fetch config
 │   └── sources/                      # Raw projection CSV exports from external providers
-│       ├── baseline_2026.csv
 │       └── fantasypros.csv
 ├── engine/
 │   ├── AGENTS.md                     # Engine module contracts, VORP math & War Room guide

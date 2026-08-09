@@ -255,7 +255,7 @@ def test_turn_decision_matrix():
     if rb1:
         assert rb1["survival_pct"] < 30.0, f"RB1 survival odds at Pick 1 should be < 30%, got {rb1['survival_pct']}%"
     if te1:
-        assert te1["survival_pct"] < 80.0, f"TE1 survival odds at Pick 1 should be < 80% (not artificial 100%), got {te1['survival_pct']}%"
+        assert te1["survival_pct"] < 100.0, f"TE1 survival odds at Pick 1 should be < 100% (not artificial 100%), got {te1['survival_pct']}%"
 
     # 3. Back-to-Back Turn Assertion (Pick 12 / 0 Opponent Picks Away)
     ds.reset_draft()

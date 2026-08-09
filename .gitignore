@@ -30,6 +30,10 @@ data/config.local.json
 data/sleeper_players.json
 data/draft_state.json
 
+# Scraped data CSV files & source backups
+data/sources/*.csv
+data/sources/*.csv.bak
+
 # Backup files & temporary exports
 *.bak
 
