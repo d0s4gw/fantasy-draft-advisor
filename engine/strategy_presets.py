@@ -122,7 +122,8 @@ class StrategyPresetManager:
         4. Late-Round Roster Compliance
         5. WR Volume Loading
         
-        Triggers are evaluated in priority order; highest applicable multiplier wins.
+        All triggers are evaluated independently; the highest applicable
+        multiplier wins (max-of-all, not first-match).
         """
         mult = 1.0
 

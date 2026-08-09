@@ -93,6 +93,12 @@ if projections_df.empty:
     st.error("⚠️ **No projection data available.** Check that CSV source files exist in `data/sources/` and at least one source is enabled in `data/sources.json`.")
     st.stop()
 
+# Pre-compute normalized player names for efficient Sleeper sync matching
+projections_df["_norm_name"] = projections_df["name"].apply(normalize_player_name).str.lower()
+
+# Module-scoped fuzzy searcher (used by both manual pick logger and Sleeper sync)
+fuzzy_searcher = FuzzySearcher(projections_df["name"].tolist())
+
 # -------------------------------------------------------------
 # SIDEBAR CONTROLS & POPOVERS
 # -------------------------------------------------------------
@@ -140,7 +146,7 @@ with st.sidebar:
         default_gov = curr_pick["governor"] if curr_pick else draft_state.governors[0]
         sel_gov = st.selectbox("Governor", draft_state.governors, index=draft_state.governors.index(default_gov))
 
-        fuzzy_searcher = FuzzySearcher(projections_df["name"].tolist() if not projections_df.empty else [])
+        # fuzzy_searcher is initialized at module scope after projections load
         search_query = st.text_input("Player search / shorthand ('cmc', 'jj')", "")
         search_results = fuzzy_searcher.search(search_query, limit=15) if search_query else []
         all_undrafted = projections_df[~projections_df["name"].apply(draft_state.is_drafted)]["name"].tolist() if not projections_df.empty else []
@@ -169,14 +175,16 @@ with st.sidebar:
             auto_sync = st.checkbox("Enable live polling (1.5s)", value=st.session_state.get("auto_sync_val", False), key="auto_sync_check")
             st.session_state.auto_sync_val = auto_sync
 
-            if sleeper_draft_id:
+            # Only hit the Sleeper API when auto_sync is enabled AND a draft ID is provided
+            if sleeper_draft_id and auto_sync:
                 info = sleeper_sync.get_draft_info(sleeper_draft_id)
                 if info:
                     d_status = info.get("status", "unknown").upper()
                     d_type = info.get("type", "snake").upper()
                     actual_id = info.get("draft_id", sleeper_draft_id)
                     
-                    picks = sleeper_sync.fetch_draft_picks(actual_id)
+                    # Pass resolved info to avoid redundant get_draft_info HTTP call
+                    picks = sleeper_sync.fetch_draft_picks(actual_id, resolved_info=info)
                     st.caption(f"🟢 **Sleeper Room Connected**: {len(picks)} picks recorded • Status: `{d_status}` ({d_type})")
                     
                     if len(picks) > len(draft_state.picks_history):
@@ -184,10 +192,10 @@ with st.sidebar:
                         synced_count = 0
                         for p in new_picks:
                             raw_pname = p["player_name"]
-                            norm_pname = normalize_player_name(raw_pname)
+                            norm_pname = normalize_player_name(raw_pname).lower()
                             
-                            # Match normalized player name against projections
-                            matched = projections_df[projections_df["name"].apply(normalize_player_name).str.lower() == norm_pname.lower()]
+                            # Match against pre-computed normalized name column
+                            matched = projections_df[projections_df["_norm_name"] == norm_pname]
                             if matched.empty:
                                 fuzzy_res = fuzzy_searcher.search(raw_pname, limit=1)
                                 if fuzzy_res:
@@ -204,7 +212,14 @@ with st.sidebar:
                                 tm = p.get("team", "NFL")
                                 pts = 0.0
 
-                            draft_state.record_pick(pname, pos, tm, pts)
+                            # Map Sleeper pick_no to correct governor via snake order
+                            pick_no = p.get("pick_no")
+                            if pick_no and pick_no <= len(draft_state.snake_order):
+                                governor = draft_state.snake_order[pick_no - 1]["governor"]
+                            else:
+                                governor = None  # fallback to current_pick_info default
+
+                            draft_state.record_pick(pname, pos, tm, pts, governor=governor)
                             synced_count += 1
                         
                         st.toast(f"Synced {synced_count} new pick(s) from Sleeper!")
@@ -213,6 +228,8 @@ with st.sidebar:
                         st.caption("ℹ️ Local draft state has more picks than Sleeper (manual picks logged).")
                 else:
                     st.warning(f"⚠️ Could not resolve Sleeper Draft/League ID for '{sleeper_draft_id}'. Verify URL/ID.")
+            elif sleeper_draft_id and not auto_sync:
+                st.caption("ℹ️ Toggle **Enable live polling** above to start auto-syncing picks from Sleeper.")
             else:
                 st.caption("ℹ️ Paste your 18-digit Sleeper Draft ID, League ID, or full draft URL above to auto-sync picks.")
 
@@ -285,6 +302,8 @@ with tab_cmd:
             st.info(f"⏳ **Draft Progress**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) • On clock: `{on_clock_gov}` • **{wait_picks} picks until your turn**")
 
     # QB SQUEEZE ALERT
+    # QB squeeze uses unfiltered projections_df intentionally: skipped players
+    # still exist in the available pool, they're only hidden from recommendations.
     squeeze_active, squeeze_msg = vorp_calc.check_qb_squeeze(projections_df, draft_state)
     if squeeze_active:
         st.warning(f"⚠️ **QB SQUEEZE WARNING**: {squeeze_msg}")
@@ -306,7 +325,7 @@ with tab_cmd:
                 st.toast(f"Slammed {best_candidate['name']} to {on_clock_gov}!")
                 st.rerun()
 
-            if st.button("⏳ Not yet", width="stretch", help=f"Skip {best_candidate['name']} for Pick #{curr_pick_i['pick_no'] if curr_pick_i else ''}"):
+            if curr_pick_i and st.button("⏳ Not yet", width="stretch", help=f"Skip {best_candidate['name']} for Pick #{curr_pick_i['pick_no']}"):
                 st.session_state.skipped_this_pick.add(best_candidate['name'])
                 st.toast(f"Skipped {best_candidate['name']} for current pick!")
                 st.rerun()

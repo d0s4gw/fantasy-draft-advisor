@@ -363,7 +363,8 @@ class JointOptimizer:
                 round_no = (len(current_roster)) + 1
                 strat_mult = StrategyPresetManager.get_positional_multiplier(
                     macro_strategy, pos, current_roster, round_no,
-                    undrafted_df=undrafted_df
+                    undrafted_df=undrafted_df,
+                    roster_requirements=draft_state.config.get("roster_requirements") if draft_state else None
                 )
                 
                 gain = round(raw_gain * stack_bonus * strat_mult, 2)

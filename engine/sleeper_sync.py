@@ -115,15 +115,18 @@ class SleeperSync:
 
         return None
 
-    def fetch_draft_picks(self, draft_id: str) -> List[Dict]:
+    def fetch_draft_picks(self, draft_id: str, resolved_info: Optional[Dict] = None) -> List[Dict]:
         """
         Polls current picks for a specific Sleeper draft ID, League ID, or URL.
         Returns list of pick objects with resolved player names, position, and team.
+        
+        If resolved_info is provided (from a prior get_draft_info call), the
+        redundant resolution HTTP request is skipped.
         """
         if not draft_id or str(draft_id).strip() == "":
             return []
 
-        info = self.get_draft_info(draft_id)
+        info = resolved_info or self.get_draft_info(draft_id)
         if not info or "draft_id" not in info:
             return []
 
