@@ -31,6 +31,8 @@ data/sleeper_players.json
 data/draft_state.json
 
 # Scraped data CSV files & source backups
+*.csv
+data/sources/
 data/sources/*.csv
 data/sources/*.csv.bak
 
