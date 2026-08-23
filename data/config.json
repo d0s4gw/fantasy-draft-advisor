@@ -38,7 +38,5 @@
     "rec_yds_per_pt": 5.0,
     "rec_td_pts": 6.0,
     "two_pt_pts": 2.0
-  },
-  "gcp_project_id": "YOUR_GCP_PROJECT_ID",
-  "gcp_location": "us-central1"
+  }
 }

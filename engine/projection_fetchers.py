@@ -12,11 +12,14 @@ import json
 import time
 import shutil
 import ssl
+import logging
 import urllib.request
 from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 # Stat column names standard
 STAT_COLS = [
@@ -27,6 +30,19 @@ STAT_COLS = [
 
 GAMES_PER_SEASON = 17
 Q1_WEEKS = 4
+
+
+def _create_ssl_context() -> ssl.SSLContext:
+    """Creates an SSL context with valid CA bundle (via certifi if available), falling back to unverified if needed."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        try:
+            return ssl.create_default_context()
+        except Exception as e:
+            logger.warning(f"Failed to create verified SSL context, falling back to unverified: {e}")
+            return ssl._create_unverified_context()
 
 
 def normalize_player_name(name: str) -> str:
@@ -100,6 +116,21 @@ class DownloadsWatcherFetcher(BaseFetcher):
         except ValueError:
             return 0.0
 
+    def _detect_csv_format(self, all_dfs: list) -> str:
+        """
+        Auto-detects whether FantasyPros CSVs contain per-game averages or season totals.
+        Heuristic: if top QB pass_yds exceeds 1000, data is season totals.
+        Returns 'per_game' or 'season_total'.
+        """
+        for df in all_dfs:
+            qb_rows = df[df["position"] == "QB"]
+            if not qb_rows.empty and "pass_yds" in qb_rows.columns:
+                max_pass_yds = qb_rows["pass_yds"].max()
+                if max_pass_yds > 1000:
+                    logger.info(f"CSV format detected as SEASON TOTALS (top QB pass_yds={max_pass_yds:.0f})")
+                    return "season_total"
+        return "per_game"
+
     def fetch(self) -> Tuple[Optional[pd.DataFrame], List[str]]:
         self.read_files = []
         if not os.path.exists(self.downloads_dir):
@@ -170,17 +201,27 @@ class DownloadsWatcherFetcher(BaseFetcher):
                         })
                 if rows:
                     all_dfs.append(pd.DataFrame(rows))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to parse FantasyPros {pos} CSV '{filepath}': {e}")
                 continue
 
         if not all_dfs:
             return None, self.read_files
 
         combined = pd.concat(all_dfs, ignore_index=True)
-        # Convert stats to 4-week Q1 totals (FantasyPros CSV exports are per-game averages)
-        for col in STAT_COLS:
-            if col in combined.columns:
-                combined[col] = (combined[col] * Q1_WEEKS).round(1)
+
+        # Auto-detect CSV format and apply appropriate scaling
+        csv_format = self._detect_csv_format(all_dfs)
+        if csv_format == "season_total":
+            # Season totals: divide by games per season, then multiply by Q1 weeks
+            for col in STAT_COLS:
+                if col in combined.columns:
+                    combined[col] = (combined[col] / GAMES_PER_SEASON * Q1_WEEKS).round(1)
+        else:
+            # Per-game averages: multiply by Q1 weeks
+            for col in STAT_COLS:
+                if col in combined.columns:
+                    combined[col] = (combined[col] * Q1_WEEKS).round(1)
 
         combined["two_pts"] = 0.0
         combined["adp"] = range(1, len(combined) + 1)
@@ -197,7 +238,7 @@ class FantasyProsWebFetcher(BaseFetcher):
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        self.context = ssl._create_unverified_context()
+        self.context = _create_ssl_context()
         self.scraped_urls = []
         self.published_date = time.strftime("%Y-%m-%d")
 
@@ -216,6 +257,7 @@ class FantasyProsWebFetcher(BaseFetcher):
                     soup = BeautifulSoup(html, 'html.parser')
                     table = soup.find('table', {'id': 'data'})
                     if not table:
+                        logger.warning(f"FantasyPros {pos.upper()}: no data table found at {url}")
                         continue
 
                     rows = table.find('tbody').find_all('tr')
@@ -268,7 +310,8 @@ class FantasyProsWebFetcher(BaseFetcher):
                             })
                     if parsed_rows:
                         all_dfs.append(pd.DataFrame(parsed_rows))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"FantasyPros {pos.upper()} scrape failed: {e}")
                 continue
 
         if not all_dfs:
@@ -295,7 +338,7 @@ class FFTodayWebFetcher(BaseFetcher):
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        self.context = ssl._create_unverified_context()
+        self.context = _create_ssl_context()
         self.scraped_urls = []
         self.published_date = "Unknown"
 
@@ -337,6 +380,7 @@ class FFTodayWebFetcher(BaseFetcher):
                             break
 
                     if not target_table:
+                        logger.warning(f"FFToday {pos}: no projection table found at {url}")
                         continue
 
                     parsed_rows = []
@@ -409,7 +453,8 @@ class FFTodayWebFetcher(BaseFetcher):
                             })
                     if parsed_rows:
                         all_dfs.append(pd.DataFrame(parsed_rows))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"FFToday {pos} scrape failed: {e}")
                 continue
 
         if not all_dfs:
@@ -436,7 +481,7 @@ class SleeperAPIFetcher(BaseFetcher):
     def __init__(self, data_dir: str):
         super().__init__("Sleeper API", data_dir)
         self.headers = {'User-Agent': 'Mozilla/5.0'}
-        self.context = ssl._create_unverified_context()
+        self.context = _create_ssl_context()
 
     def fetch(self) -> Optional[dict]:
         try:
@@ -462,13 +507,16 @@ class SleeperAPIFetcher(BaseFetcher):
                     with open(cache_path, "w") as f:
                         json.dump(structured, f)
                     return structured
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Sleeper API fetch failed: {e}")
 
         cache_path = os.path.join(self.data_dir, "sleeper_players.json")
         if os.path.exists(cache_path):
-            with open(cache_path, "r") as f:
-                return json.load(f)
+            try:
+                with open(cache_path, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read Sleeper cache: {e}")
         return None
 
 
@@ -502,8 +550,8 @@ class FetcherManager:
                 try:
                     with open(cache_path, "r") as f:
                         sleeper_data = json.load(f)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to read Sleeper cache in offline mode: {e}")
 
         sync_time_str = time.strftime("%Y-%m-%d %H:%M")
 
@@ -537,7 +585,7 @@ class FetcherManager:
             # 2a. Check ~/Downloads for full FantasyPros CSV exports first (500+ players)
             dl_fetcher = DownloadsWatcherFetcher(self.data_dir)
             df_dl, _ = dl_fetcher.fetch()
-            valid_dl, _ = DataSanityGuard.validate(df_dl, "FantasyPros Downloads", min_players=50)
+            valid_dl, dl_msg = DataSanityGuard.validate(df_dl, "FantasyPros Downloads", min_players=50)
 
             if valid_dl:
                 df_dl.to_csv(target_fp, index=False)
@@ -551,52 +599,13 @@ class FetcherManager:
                     "published_date": pub_dl,
                     "timestamp": time.time()
                 }
+                # Parallel: FFToday only (FantasyPros already ingested from Downloads)
+                self._fetch_fftoday()
             else:
-                # Fallback to public web scraper
-                fp_fetcher = FantasyProsWebFetcher(self.data_dir)
-                df_fp, urls_fp = fp_fetcher.fetch()
-                valid_fp, _ = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=20)
-                if valid_fp:
-                    df_fp.to_csv(target_fp, index=False)
-                    pub_fp = fp_fetcher.published_date
-                    print(f"      ✅ Scraped {len(df_fp)} players from FantasyPros Web -> data/sources/fantasypros.csv (Published: {pub_fp})")
-                    self.health_matrix["fantasypros"] = {
-                        "name": "FantasyPros Projections (Live Scraper)",
-                        "status": "HEALTHY",
-                        "source": "Live Web Scraper",
-                        "players": len(df_fp),
-                        "published_date": pub_fp,
-                        "timestamp": time.time()
-                    }
-
-            # 2b. FFToday Live Web Scraper
-            target_fft = os.path.join(self.sources_dir, "fftoday.csv")
-            fft_fetcher = FFTodayWebFetcher(self.data_dir)
-            df_fft, urls_fft = fft_fetcher.fetch()
-            valid_fft, _ = DataSanityGuard.validate(df_fft, "FFToday Web", min_players=50)
-
-            if valid_fft:
-                df_fft.to_csv(target_fft, index=False)
-                pub_fft = fft_fetcher.published_date
-                print(f"      ✅ Scraped {len(df_fft)} players from FFToday Web -> data/sources/fftoday.csv (Published: {pub_fft})")
-                self.health_matrix["fftoday"] = {
-                    "name": "FFToday Projections (Live Scraper)",
-                    "status": "HEALTHY",
-                    "source": "Live Web Scraper",
-                    "players": len(df_fft),
-                    "published_date": pub_fft,
-                    "timestamp": time.time()
-                }
-            else:
-                print("      ⚠️ FFToday Web Scraper skipped or empty.")
-                self.health_matrix["fftoday"] = {
-                    "name": "FFToday Projections (Live Scraper)",
-                    "status": "UNAVAILABLE",
-                    "source": "Live Web Scraper",
-                    "players": 0,
-                    "published_date": "N/A",
-                    "timestamp": time.time()
-                }
+                if dl_msg:
+                    logger.info(f"Downloads watcher: {dl_msg}")
+                # Parallel: FantasyPros web scraper + FFToday web scraper
+                self._fetch_scrapers_parallel(target_fp)
         else:
             print("      ⚡ Offline mode active; using cached CSV sources in data/sources/.")
 
@@ -613,3 +622,111 @@ class FetcherManager:
             print(f"  • {s_name:<42} | Status: {s_status:<10} | Players: {s_count:>4} | Published: {s_date}")
         print("=" * 75 + "\n")
         return self.health_matrix
+
+    def _fetch_fftoday(self):
+        """Fetches FFToday projections."""
+        target_fft = os.path.join(self.sources_dir, "fftoday.csv")
+        fft_fetcher = FFTodayWebFetcher(self.data_dir)
+        df_fft, urls_fft = fft_fetcher.fetch()
+        valid_fft, fft_msg = DataSanityGuard.validate(df_fft, "FFToday Web", min_players=50)
+
+        if valid_fft:
+            df_fft.to_csv(target_fft, index=False)
+            pub_fft = fft_fetcher.published_date
+            print(f"      ✅ Scraped {len(df_fft)} players from FFToday Web -> data/sources/fftoday.csv (Published: {pub_fft})")
+            self.health_matrix["fftoday"] = {
+                "name": "FFToday Projections (Live Scraper)",
+                "status": "HEALTHY",
+                "source": "Live Web Scraper",
+                "players": len(df_fft),
+                "published_date": pub_fft,
+                "timestamp": time.time()
+            }
+        else:
+            logger.info(f"FFToday scraper: {fft_msg}")
+            print("      ⚠️ FFToday Web Scraper skipped or empty.")
+            self.health_matrix["fftoday"] = {
+                "name": "FFToday Projections (Live Scraper)",
+                "status": "UNAVAILABLE",
+                "source": "Live Web Scraper",
+                "players": 0,
+                "published_date": "N/A",
+                "timestamp": time.time()
+            }
+
+    def _fetch_scrapers_parallel(self, target_fp: str):
+        """Runs FantasyPros and FFToday web scrapers in parallel using ThreadPoolExecutor."""
+        fp_result = {"df": None, "urls": [], "valid": False}
+        fft_result = {"df": None, "urls": [], "valid": False}
+
+        def _run_fantasypros():
+            fp_fetcher = FantasyProsWebFetcher(self.data_dir)
+            df_fp, urls_fp = fp_fetcher.fetch()
+            valid_fp, msg = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=20)
+            fp_result["df"] = df_fp
+            fp_result["urls"] = urls_fp
+            fp_result["valid"] = valid_fp
+            fp_result["published_date"] = fp_fetcher.published_date
+            if not valid_fp:
+                logger.info(f"FantasyPros web scraper: {msg}")
+
+        def _run_fftoday():
+            fft_fetcher = FFTodayWebFetcher(self.data_dir)
+            df_fft, urls_fft = fft_fetcher.fetch()
+            valid_fft, msg = DataSanityGuard.validate(df_fft, "FFToday Web", min_players=50)
+            fft_result["df"] = df_fft
+            fft_result["urls"] = urls_fft
+            fft_result["valid"] = valid_fft
+            fft_result["published_date"] = fft_fetcher.published_date
+            if not valid_fft:
+                logger.info(f"FFToday web scraper: {msg}")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(_run_fantasypros),
+                executor.submit(_run_fftoday),
+            ]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.warning(f"Parallel fetch task failed: {e}")
+
+        # Process FantasyPros result
+        if fp_result["valid"]:
+            fp_result["df"].to_csv(target_fp, index=False)
+            pub_fp = fp_result.get("published_date", time.strftime("%Y-%m-%d"))
+            print(f"      ✅ Scraped {len(fp_result['df'])} players from FantasyPros Web -> data/sources/fantasypros.csv (Published: {pub_fp})")
+            self.health_matrix["fantasypros"] = {
+                "name": "FantasyPros Projections (Live Scraper)",
+                "status": "HEALTHY",
+                "source": "Live Web Scraper",
+                "players": len(fp_result["df"]),
+                "published_date": pub_fp,
+                "timestamp": time.time()
+            }
+
+        # Process FFToday result
+        target_fft = os.path.join(self.sources_dir, "fftoday.csv")
+        if fft_result["valid"]:
+            fft_result["df"].to_csv(target_fft, index=False)
+            pub_fft = fft_result.get("published_date", "Unknown")
+            print(f"      ✅ Scraped {len(fft_result['df'])} players from FFToday Web -> data/sources/fftoday.csv (Published: {pub_fft})")
+            self.health_matrix["fftoday"] = {
+                "name": "FFToday Projections (Live Scraper)",
+                "status": "HEALTHY",
+                "source": "Live Web Scraper",
+                "players": len(fft_result["df"]),
+                "published_date": pub_fft,
+                "timestamp": time.time()
+            }
+        else:
+            print("      ⚠️ FFToday Web Scraper skipped or empty.")
+            self.health_matrix["fftoday"] = {
+                "name": "FFToday Projections (Live Scraper)",
+                "status": "UNAVAILABLE",
+                "source": "Live Web Scraper",
+                "players": 0,
+                "published_date": "N/A",
+                "timestamp": time.time()
+            }

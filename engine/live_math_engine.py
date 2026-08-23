@@ -69,6 +69,6 @@ class LiveMathEngine(DraftEngineBase):
         res_df = self.optimizer.evaluate_candidate_picks(projections_df, draft_state)
         return self.recommend_from_vorp(res_df, draft_state)
 
-    def generate_war_room_matrix(self, projections_df: pd.DataFrame, draft_state, macro_strategy: str = "AUTO") -> Dict[str, Any]:
-        return self.optimizer.compute_turn_decision_matrix(draft_state, projections_df, macro_strategy=macro_strategy)
+    def generate_war_room_matrix(self, projections_df: pd.DataFrame, draft_state, macro_strategy: str = "AUTO", seed: int = None) -> Dict[str, Any]:
+        return self.optimizer.compute_turn_decision_matrix(draft_state, projections_df, macro_strategy=macro_strategy, seed=seed)
 

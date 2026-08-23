@@ -13,8 +13,19 @@ to accurately evaluate the marginal cost of delaying a position.
 """
 
 import pandas as pd
+import numpy as np
 from typing import List, Dict, Optional, Any
 from engine.strategy_presets import StrategyPresetManager
+
+
+def _get_positional_baseline(df: pd.DataFrame, pos: str, target_idx: int) -> float:
+    """Returns the UFL pts of the player at `target_idx` (1-indexed rank) for a position, matching original baseline math."""
+    pos_df = df[df["position"] == pos].sort_values("ufl_pts", ascending=False)
+    if len(pos_df) >= target_idx:
+        return pos_df.iloc[target_idx - 1]["ufl_pts"]
+    elif not pos_df.empty:
+        return pos_df.iloc[-1]["ufl_pts"] * 0.85
+    return 0.0
 
 
 class JointOptimizer:
@@ -191,7 +202,7 @@ class JointOptimizer:
             return undrafted_df
 
         if draft_state:
-            undrafted_df = undrafted_df[~undrafted_df["name"].apply(draft_state.is_drafted)].copy()
+            undrafted_df = undrafted_df[~undrafted_df["name"].str.lower().isin(draft_state.drafted_players)].copy()
 
         if undrafted_df.empty:
             return undrafted_df
@@ -223,15 +234,12 @@ class JointOptimizer:
         total_full_needed = req_qbs_full + req_tes_full + req_rbs_full + req_wrs_full
 
         # Calculate realistic positional replacement baselines at future draft picks
-        pos_future_baselines = {}
-        for pos, target_idx in [("QB", 10), ("RB", 10), ("WR", 12), ("TE", 6)]:
-            pos_df = undrafted_df[undrafted_df["position"] == pos].sort_values(by="ufl_pts", ascending=False)
-            if len(pos_df) >= target_idx:
-                pos_future_baselines[pos] = pos_df.iloc[target_idx - 1]["ufl_pts"]
-            elif not pos_df.empty:
-                pos_future_baselines[pos] = pos_df.iloc[-1]["ufl_pts"] * 0.85
-            else:
-                pos_future_baselines[pos] = 0.0
+        pos_future_baselines = {
+            "QB": _get_positional_baseline(undrafted_df, "QB", 10),
+            "RB": _get_positional_baseline(undrafted_df, "RB", 10),
+            "WR": _get_positional_baseline(undrafted_df, "WR", 12),
+            "TE": _get_positional_baseline(undrafted_df, "TE", 6),
+        }
 
         # Calculate flex baseline (expected replacement value for flex starter slots)
         flex_candidates = []
@@ -404,13 +412,18 @@ class JointOptimizer:
         projections_df: pd.DataFrame,
         candidate_limit: int = 10,
         num_sims: int = 60,
-        macro_strategy: str = "AUTO"
+        macro_strategy: str = "AUTO",
+        seed: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Computes the War Room Decision Matrix for candidate picks.
         Generates positional diversity candidates, survival probabilities,
         positional regret cliffs, back-to-back turn pairing recommendations,
         and floor/ceiling simulation score ranges.
+        
+        Args:
+            seed: Optional RNG seed for deterministic Monte Carlo simulations.
+                  Pass None for production (random), a fixed int for tests.
         """
         if projections_df.empty or not draft_state:
             return {
@@ -421,7 +434,6 @@ class JointOptimizer:
                 "candidates": []
             }
 
-        import numpy as np
         from engine.opponent_predictor import OpponentPredictor
 
         eval_df = self.evaluate_candidate_picks(projections_df, draft_state, macro_strategy=macro_strategy)
@@ -461,7 +473,7 @@ class JointOptimizer:
         picks_until_next = num_opp_picks
         is_back_to_back = (num_opp_picks == 0)
 
-        undrafted_pool = projections_df[~projections_df["name"].apply(draft_state.is_drafted)].copy()
+        undrafted_pool = projections_df[~projections_df["name"].str.lower().isin(draft_state.drafted_players)].copy()
 
         # Convert undrafted pool to lightweight list of dicts for ultra-fast simulation
         undrafted_records = undrafted_pool.to_dict("records")
@@ -473,15 +485,24 @@ class JointOptimizer:
         }
 
         # Calculate positional replacement baselines for normalized cross-position opponent choices
+        def _get_turn_baseline(pos: str, rank_idx: int, fallback: float) -> float:
+            sub = projections_df[projections_df["position"] == pos]
+            if not sub.empty:
+                return sub.iloc[min(rank_idx, len(sub) - 1)]["ufl_pts"]
+            return fallback
+
         pos_baselines = {
-            "QB": projections_df[projections_df["position"] == "QB"].iloc[min(11, len(projections_df[projections_df["position"] == "QB"])-1)]["ufl_pts"] if not projections_df[projections_df["position"] == "QB"].empty else 50.0,
-            "RB": projections_df[projections_df["position"] == "RB"].iloc[min(17, len(projections_df[projections_df["position"] == "RB"])-1)]["ufl_pts"] if not projections_df[projections_df["position"] == "RB"].empty else 40.0,
-            "WR": projections_df[projections_df["position"] == "WR"].iloc[min(17, len(projections_df[projections_df["position"] == "WR"])-1)]["ufl_pts"] if not projections_df[projections_df["position"] == "WR"].empty else 35.0,
-            "TE": projections_df[projections_df["position"] == "TE"].iloc[min(11, len(projections_df[projections_df["position"] == "TE"])-1)]["ufl_pts"] if not projections_df[projections_df["position"] == "TE"].empty else 20.0,
+            "QB": _get_turn_baseline("QB", 11, 50.0),
+            "RB": _get_turn_baseline("RB", 17, 40.0),
+            "WR": _get_turn_baseline("WR", 17, 35.0),
+            "TE": _get_turn_baseline("TE", 11, 20.0),
         }
 
         for p in undrafted_records:
             p["_pos_vorp"] = p["ufl_pts"] - pos_baselines.get(p["position"], 20.0)
+
+        # Create seeded RNG for deterministic Monte Carlo simulations
+        rng = np.random.default_rng(seed)
 
         # Shared Monte Carlo Draft Board Simulations (run once for high performance)
         sim_drafted_sets = []
@@ -510,7 +531,7 @@ class JointOptimizer:
                     best_score = -999.0
                     for p in unique_pool:
                         need_mult = 1.35 if (opp_needs and p["position"] in opp_needs) else 1.0
-                        noise = np.random.normal(1.0, 0.15)
+                        noise = rng.normal(1.0, 0.15)
                         score = (p["_pos_vorp"] + 30.0) * noise * need_mult
                         if score > best_score:
                             best_score = score
@@ -624,4 +645,3 @@ class JointOptimizer:
             "top_pair_recommendation": top_pair_text,
             "candidates": matrix_rows
         }
-

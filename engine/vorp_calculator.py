@@ -31,7 +31,7 @@ class VORPCalculator:
             return df
 
         if draft_state:
-            undrafted_df = df[~df["name"].apply(draft_state.is_drafted)].copy()
+            undrafted_df = df[~df["name"].str.lower().isin(draft_state.drafted_players)].copy()
         else:
             undrafted_df = df.copy()
 
@@ -72,7 +72,7 @@ class VORPCalculator:
         if df.empty or not draft_state:
             return []
 
-        undrafted_df = df[~df["name"].apply(draft_state.is_drafted)].copy()
+        undrafted_df = df[~df["name"].str.lower().isin(draft_state.drafted_players)].copy()
         cliffs = []
 
         for pos in ["RB", "WR", "QB", "TE"]:
@@ -120,7 +120,7 @@ class VORPCalculator:
         if not draft_state or df.empty:
             return False, ""
 
-        undrafted_qbs = df[(df["position"] == "QB") & (~df["name"].apply(draft_state.is_drafted))]
+        undrafted_qbs = df[(df["position"] == "QB") & (~df["name"].str.lower().isin(draft_state.drafted_players))]
         # Top-tier QBs for Q1 UFL scoring (>= 35.0 UFL pts for 4 weeks)
         top_tier_qbs = undrafted_qbs[undrafted_qbs["ufl_pts"] >= 35.0]
 

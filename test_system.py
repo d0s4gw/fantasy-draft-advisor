@@ -331,6 +331,48 @@ def test_auto_fetchers_and_sanity_guard():
     assert matrix["sleeper"]["status"] in ["HEALTHY", "CACHED"], "Sleeper status in matrix should be valid"
     print("  ✅ Projection Fetchers, Name Normalization & Sanity Guard passed!")
 
+def test_deterministic_monte_carlo_seed():
+    print("Testing Deterministic Monte Carlo Seeding...")
+    synth = ProjectionSynthesizer(DATA_DIR)
+    df = synth.synthesize()
+    ds = DraftState(CONFIG_PATH, STATE_PATH)
+    ds.reset_draft()
+
+    e2 = LiveMathEngine(ds.roster_limits)
+    matrix_1 = e2.generate_war_room_matrix(df, ds, seed=123)
+    matrix_2 = e2.generate_war_room_matrix(df, ds, seed=123)
+
+    cands_1 = matrix_1["candidates"]
+    cands_2 = matrix_2["candidates"]
+
+    assert len(cands_1) == len(cands_2), "Candidate counts must match with fixed seed"
+    for c1, c2 in zip(cands_1, cands_2):
+        assert c1["name"] == c2["name"], f"Candidate name mismatch: {c1['name']} vs {c2['name']}"
+        assert c1["survival_pct"] == c2["survival_pct"], f"Survival pct mismatch with fixed seed: {c1['survival_pct']} vs {c2['survival_pct']}"
+        assert c1["regret_cliff"] == c2["regret_cliff"], f"Regret cliff mismatch with fixed seed: {c1['regret_cliff']} vs {c2['regret_cliff']}"
+    print("  ✅ Deterministic Monte Carlo Seeding passed!")
+
+def test_positional_cliff_detection_details():
+    print("Testing Positional Cliff Detection Deep Validation...")
+    synth = ProjectionSynthesizer(DATA_DIR)
+    df = synth.synthesize()
+    ds = DraftState(CONFIG_PATH, STATE_PATH)
+    ds.reset_draft()
+
+    calc = VORPCalculator(ds.roster_limits)
+    cliffs = calc.detect_positional_cliffs(df, ds)
+    assert isinstance(cliffs, list)
+    for cliff in cliffs:
+        assert "position" in cliff
+        assert "top_player" in cliff
+        assert "drop_off" in cliff
+        assert "severity" in cliff
+        assert "message" in cliff
+        assert cliff["severity"] in ["CRITICAL", "WARNING", "NOTICE"]
+        assert cliff["drop_off"] >= 12.0
+
+    print("  ✅ Positional Cliff Detection Deep Validation passed!")
+
 def run_all_tests():
     print("=" * 60)
     print("🏈 RUNNING UFL DRAFT ADVISOR SYSTEM TEST SUITE")
@@ -343,6 +385,8 @@ def run_all_tests():
     test_opponent_predictor()
     test_engines()
     test_turn_decision_matrix()
+    test_deterministic_monte_carlo_seed()
+    test_positional_cliff_detection_details()
     test_bug_fixes()
     test_auto_fetchers_and_sanity_guard()
     print("=" * 60)
@@ -351,4 +395,5 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+
 

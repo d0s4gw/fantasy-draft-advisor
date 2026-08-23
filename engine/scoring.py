@@ -3,30 +3,18 @@ UFL Custom Scoring Calculator Engine.
 Calculates custom fantasy points based on 0.2 pts/yd rushing & receiving multipliers.
 """
 
-from typing import Optional
 
-def calculate_ufl_points(stats: dict, rules: Optional[dict] = None) -> float:
+
+def calculate_ufl_points(stats: dict, rules: dict) -> float:
     """
     Calculates total UFL fantasy points for a given set of stats.
     
-    Default rules:
+    Rules dict must contain scoring coefficients (loaded from config.json):
     - Rushing: 1 pt / 5 yds (0.2 pts/yd) + 6 pt TD
     - Receiving: 0.3 PPR + 1 pt / 5 yds (0.2 pts/yd) + 6 pt TD
     - Passing: 1 pt / 25 yds (0.04 pts/yd) + 4 pt TD - 2 pt INT
     - 2-pt Conversions: 2 pts
     """
-    if rules is None:
-        rules = {
-            "pass_yds_per_pt": 25.0,
-            "pass_td_pts": 4.0,
-            "pass_int_pts": -2.0,
-            "rush_yds_per_pt": 5.0,
-            "rush_td_pts": 6.0,
-            "rec_pts": 0.3,
-            "rec_yds_per_pt": 5.0,
-            "rec_td_pts": 6.0,
-            "two_pt_pts": 2.0
-        }
 
     pass_yds = stats.get("pass_yds", 0.0)
     pass_tds = stats.get("pass_tds", 0.0)

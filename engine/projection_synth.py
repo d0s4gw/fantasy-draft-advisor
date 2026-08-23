@@ -11,11 +11,20 @@ from engine.scoring import calculate_ufl_points
 from engine.projection_fetchers import normalize_player_name, FetcherManager
 
 class ProjectionSynthesizer:
+    # Default scoring coefficients (fallback if config.json missing)
+    DEFAULT_SCORING_RULES = {
+        "pass_yds_per_pt": 25.0, "pass_td_pts": 4.0, "pass_int_pts": -2.0,
+        "rush_yds_per_pt": 5.0, "rush_td_pts": 6.0,
+        "rec_pts": 0.3, "rec_yds_per_pt": 5.0, "rec_td_pts": 6.0,
+        "two_pt_pts": 2.0
+    }
+
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.sources_config_path = os.path.join(data_dir, "sources.json")
         self.sources_dir = os.path.join(data_dir, "sources")
         self.overrides_path = os.path.join(data_dir, "overrides.json")
+        self.league_config_path = os.path.join(data_dir, "config.json")
         
         # Ensure directories exist
         os.makedirs(self.sources_dir, exist_ok=True)
@@ -34,6 +43,17 @@ class ProjectionSynthesizer:
                 self.overrides = json.load(f)
         else:
             self.overrides = {"players": {}}
+
+        # Load scoring rules from league config.json (single source of truth)
+        if os.path.exists(self.league_config_path):
+            try:
+                with open(self.league_config_path, "r") as f:
+                    league_cfg = json.load(f)
+                self.scoring_rules = league_cfg.get("scoring_rules", self.DEFAULT_SCORING_RULES)
+            except Exception:
+                self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
+        else:
+            self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
 
     def save_config(self):
         """Saves current sources config."""
@@ -141,7 +161,7 @@ class ProjectionSynthesizer:
                     row[col] = round(row[col] * touch_mult, 1)
 
             # Compute UFL Fantasy Points from already-discounted stats (no second multiplier)
-            ufl_pts = calculate_ufl_points(row)
+            ufl_pts = calculate_ufl_points(row, self.scoring_rules)
             row["ufl_pts"] = round(ufl_pts, 2)
             row["points_per_game"] = round(ufl_pts / 4.0, 1)
             row["injury_status"] = inj_status
