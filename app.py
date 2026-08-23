@@ -128,12 +128,14 @@ with st.sidebar:
         selected_strategy_key = st.selectbox(
             "Strategy preset",
             preset_keys,
+            key="selected_strategy_key",
             format_func=lambda k: f"{STRATEGY_PRESETS[k]['name']} — {STRATEGY_PRESETS[k]['description']}"
         )
 
         selected_vorp_mode = st.radio(
             "Risk / Volatility mode",
             ["BALANCED", "CEILING", "FLOOR"],
+            key="selected_vorp_mode",
             help="BALANCED uses base projections; CEILING rewards spike weeks; FLOOR targets baseline security."
         )
 
@@ -280,12 +282,19 @@ else:
     rec_projections_df = projections_df
 
 vorp_calc = VORPCalculator(draft_state.roster_limits)
+# 1. vorp_df for the active on-clock team
 vorp_df = vorp_calc.compute_vorp(rec_projections_df, draft_state, macro_strategy=selected_strategy_key, mode=selected_vorp_mode)
 opponent_predictor = OpponentPredictor(draft_state)
 vorp_df = opponent_predictor.flag_at_risk_players(vorp_df)
 
 active_engine = LiveMathEngine(draft_state.roster_limits)
 rec_result = active_engine.recommend_from_vorp(vorp_df, draft_state)
+
+# 2. my_vorp_df specifically for user's team (Mike Welsh) using selected strategy
+my_vorp_df = vorp_calc.compute_vorp(rec_projections_df, draft_state, macro_strategy=selected_strategy_key, mode=selected_vorp_mode, governor=draft_state.my_team)
+my_vorp_df = opponent_predictor.flag_at_risk_players(my_vorp_df)
+my_rec_result = active_engine.recommend_from_vorp(my_vorp_df, draft_state)
+my_best_candidate = my_rec_result.get("best_decision")
 
 # -------------------------------------------------------------
 # MAIN CONTENT TABS
@@ -304,6 +313,7 @@ with tab_cmd:
     if not curr_pick_i:
         st.success("🎉 **DRAFT COMPLETE!** All 72 picks have been recorded.")
         on_clock_gov = draft_state.my_team
+        is_my_turn = True
     else:
         on_clock_gov = curr_pick_i["governor"]
         is_my_turn = (on_clock_gov == draft_state.my_team)
@@ -312,6 +322,8 @@ with tab_cmd:
         else:
             wait_picks = draft_state.picks_until_my_turn()
             st.info(f"⏳ **Draft Progress**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) • On clock: `{on_clock_gov}` • **{wait_picks} picks until your turn**")
+
+    st.caption(f"🎯 **Active Strategy**: `{STRATEGY_PRESETS[selected_strategy_key]['name']}` • Mode: `{selected_vorp_mode}`")
 
     # QB SQUEEZE ALERT
     # QB squeeze uses unfiltered projections_df intentionally: skipped players
@@ -323,24 +335,48 @@ with tab_cmd:
     st.markdown("---")
 
     # TOP RECOMMENDATION CARD
-    best_candidate = rec_result.get("best_decision")
-    if best_candidate:
-        c_rec1, c_rec2 = st.columns([3, 1])
-        with c_rec1:
-            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']})")
-            st.markdown(rec_result.get("advice_text", ""))
-        with c_rec2:
-            if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
-                p_info = projections_df[projections_df["name"] == best_candidate['name']].iloc[0]
-                draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=on_clock_gov)
-                st.session_state.skipped_this_pick.clear()
-                st.toast(f"Slammed {best_candidate['name']} to {on_clock_gov}!")
-                st.rerun()
+    if is_my_turn:
+        best_candidate = my_best_candidate
+        if best_candidate:
+            c_rec1, c_rec2 = st.columns([3, 1])
+            with c_rec1:
+                st.markdown(f"### 🎯 Recommended Pick for YOU: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']})")
+                st.markdown(my_rec_result.get("advice_text", ""))
+            with c_rec2:
+                if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {draft_state.my_team}"):
+                    p_info = projections_df[projections_df["name"] == best_candidate['name']].iloc[0]
+                    draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=draft_state.my_team)
+                    st.session_state.skipped_this_pick.clear()
+                    st.toast(f"Slammed {best_candidate['name']} to {draft_state.my_team}!")
+                    st.rerun()
 
-            if curr_pick_i and st.button("⏳ Not yet", width="stretch", help=f"Skip {best_candidate['name']} for Pick #{curr_pick_i['pick_no']}"):
-                st.session_state.skipped_this_pick.add(best_candidate['name'])
-                st.toast(f"Skipped {best_candidate['name']} for current pick!")
-                st.rerun()
+                if curr_pick_i and st.button("⏳ Not yet", width="stretch", help=f"Skip {best_candidate['name']} for Pick #{curr_pick_i['pick_no']}"):
+                    st.session_state.skipped_this_pick.add(best_candidate['name'])
+                    st.toast(f"Skipped {best_candidate['name']} for current pick!")
+                    st.rerun()
+    else:
+        best_candidate = rec_result.get("best_decision")
+        if best_candidate:
+            c_rec1, c_rec2 = st.columns([3, 1])
+            with c_rec1:
+                st.markdown(f"### 📋 Current Pick Recommendation: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']}) *(for `{on_clock_gov}`)*")
+                st.caption(f"Suggested pick for `{on_clock_gov}` to keep draft moving.")
+            with c_rec2:
+                if st.button(f"⚡ Record to {on_clock_gov}", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
+                    p_info = projections_df[projections_df["name"] == best_candidate['name']].iloc[0]
+                    draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=on_clock_gov)
+                    st.session_state.skipped_this_pick.clear()
+                    st.toast(f"Recorded {best_candidate['name']} to {on_clock_gov}!")
+                    st.rerun()
+
+                if curr_pick_i and st.button("⏳ Skip", width="stretch", help=f"Skip {best_candidate['name']}"):
+                    st.session_state.skipped_this_pick.add(best_candidate['name'])
+                    st.toast(f"Skipped {best_candidate['name']}!")
+                    st.rerun()
+
+        # Prominently display User Target Pick Preview aligned with active strategy
+        if my_best_candidate:
+            st.success(f"🌟 **Your Target Pick Preview (`{draft_state.my_team}` • `{STRATEGY_PRESETS[selected_strategy_key]['name']}`)**: **{my_best_candidate['name']}** ({my_best_candidate['position']} • {my_best_candidate['team']}) — Projected Net Gain: `+{my_best_candidate['marginal_gain']:.1f} Pts`")
 
     # SKIPPED PLAYERS BANNER FOR ACTIVE PICK
     if st.session_state.skipped_this_pick:

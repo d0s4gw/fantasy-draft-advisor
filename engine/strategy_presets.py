@@ -68,37 +68,43 @@ class StrategyPresetManager:
         if strategy == "HERO_RB":
             if round_no <= 2:
                 if position == "RB" and rb_count == 0:
-                    return 1.25 # Boost first RB
+                    return 1.30 # Heavily boost first anchor RB
                 elif position == "RB" and rb_count >= 1:
-                    return 0.80 # Deprioritize RB2 early
+                    return 0.70 # Heavy penalty on drafting RB2 in early rounds
+                elif position in ["WR", "QB", "TE"]:
+                    return 1.15
             elif round_no in [3, 4, 5]:
                 if position == "RB" and rb_count == 1:
-                    return 0.85 # Hold off on RB2 until mid rounds
-                elif position in ["WR", "QB"]:
-                    return 1.15
+                    return 0.75 # Suppress RB2 until mid rounds
+                elif position in ["WR", "QB", "TE"]:
+                    return 1.20
 
         elif strategy == "ZERO_RB":
             if round_no <= 4:
                 if position == "RB":
-                    return 0.70 # Heavy penalty on early RBs
+                    return 0.60 # Heavy penalty on early RBs
                 elif position in ["WR", "QB", "TE"]:
-                    return 1.20 # Boost early pass-catchers and QBs
+                    return 1.25 # Boost early pass-catchers and elite QBs/TEs
             elif round_no >= 5:
                 if position == "RB" and rb_count < 2:
-                    return 1.25 # Boost high-upside RBs in mid rounds
+                    return 1.30 # Boost high-upside RBs in mid rounds
 
         elif strategy == "ROBUST_RB":
             if round_no <= 3:
                 if position == "RB" and rb_count < 2:
-                    return 1.30 # Heavily prioritize early dual RBs
+                    return 1.35 # Heavily prioritize early dual workhorse RBs
+                elif position in ["TE", "QB"]:
+                    return 0.85 # Deprioritize early luxury TE/QB picks
             elif round_no in [4, 5, 6]:
-                if position in ["WR", "QB"]:
+                if position in ["WR", "QB", "TE"]:
                     return 1.15
 
         elif strategy == "ELITE_TE":
-            if round_no in [3, 4] and te_count == 0:
+            if round_no <= 4 and te_count == 0:
                 if position == "TE":
-                    return 1.35 # Heavy push for elite TE anchor in rounds 3-4
+                    return 1.50 # Heavy boost to secure Tier-1 TE (Bowers/McBride)
+                elif position == "RB":
+                    return 0.85 # Slight deprioritization of early RBs to clear path for TE1
 
         return 1.0
 
