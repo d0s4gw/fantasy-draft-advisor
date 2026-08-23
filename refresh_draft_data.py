@@ -32,7 +32,14 @@ def extract_injury_map(sleeper_data: dict) -> dict:
     if not sleeper_data:
         return injury_map
         
-    for p_id, p_info in sleeper_data.items():
+    # Handle structured Sleeper cache schema: {"id_to_name": ..., "name_to_id": ..., "_raw": ...}
+    raw_players = sleeper_data.get("_raw", sleeper_data)
+    if not isinstance(raw_players, dict):
+        return injury_map
+
+    for p_id, p_info in raw_players.items():
+        if not isinstance(p_info, dict):
+            continue
         name = p_info.get("full_name")
         if not name:
             fname = p_info.get("first_name", "")

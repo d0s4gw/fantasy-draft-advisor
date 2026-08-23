@@ -233,22 +233,48 @@ class JointOptimizer:
             else:
                 pos_future_baselines[pos] = 0.0
 
-        # Calculate base portfolio score with future replacement baselines filling remaining starter slots
-        base_projected_full = list(current_roster)
-        if cur_qbs < 2:
-            qb_base = pos_future_baselines.get("QB", 75.0)
-            for _ in range(2 - cur_qbs):
-                base_projected_full.append({"position": "QB", "ufl_pts": qb_base})
-        if cur_rbs < 1:
-            rb_base = pos_future_baselines.get("RB", 105.0)
-            base_projected_full.append({"position": "RB", "ufl_pts": rb_base})
-        if cur_wrs < 1:
-            wr_base = pos_future_baselines.get("WR", 90.0)
-            base_projected_full.append({"position": "WR", "ufl_pts": wr_base})
-        if cur_tes < 1:
-            te_base = pos_future_baselines.get("TE", 60.0)
-            base_projected_full.append({"position": "TE", "ufl_pts": te_base})
+        # Calculate flex baseline (expected replacement value for flex starter slots)
+        flex_candidates = []
+        for pos in ["RB", "WR", "TE"]:
+            p_df = undrafted_df[undrafted_df["position"] == pos].sort_values(by="ufl_pts", ascending=False)
+            if len(p_df) >= 2:
+                flex_candidates.append(p_df.iloc[1]["ufl_pts"])
+            elif not p_df.empty:
+                flex_candidates.append(p_df.iloc[0]["ufl_pts"] * 0.80)
+        flex_base = round(sum(flex_candidates) / len(flex_candidates), 1) if flex_candidates else 70.0
 
+        def _project_full_7_starters(roster_list: List[Dict]) -> List[Dict]:
+            """Projects a full 7-starter lineup (2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX) using future baselines."""
+            projected = list(roster_list)
+            qbs = len([p for p in roster_list if p["position"] == "QB"])
+            rbs = len([p for p in roster_list if p["position"] == "RB"])
+            wrs = len([p for p in roster_list if p["position"] == "WR"])
+            tes = len([p for p in roster_list if p["position"] == "TE"])
+
+            if qbs < 2:
+                qb_b = pos_future_baselines.get("QB", 75.0)
+                for _ in range(2 - qbs):
+                    projected.append({"position": "QB", "ufl_pts": qb_b})
+            if rbs < 1:
+                rb_b = pos_future_baselines.get("RB", 105.0)
+                projected.append({"position": "RB", "ufl_pts": rb_b})
+            if wrs < 1:
+                wr_b = pos_future_baselines.get("WR", 90.0)
+                projected.append({"position": "WR", "ufl_pts": wr_b})
+            if tes < 1:
+                te_b = pos_future_baselines.get("TE", 60.0)
+                projected.append({"position": "TE", "ufl_pts": te_b})
+
+            # Calculate remaining flex starters needed (7 starters total - 2 QB - 1 RB - 1 WR - 1 TE = 2 FLEX)
+            extra_flex = max(0, rbs - 1) + max(0, wrs - 1) + max(0, tes - 1)
+            flex_needed = max(0, 2 - extra_flex)
+            for _ in range(flex_needed):
+                projected.append({"position": "WR", "ufl_pts": flex_base})
+
+            return projected
+
+        # Calculate base portfolio score with 7 starters filled
+        base_projected_full = _project_full_7_starters(current_roster)
         base_portfolio_score = self.solve_weekly_starting_lineup(base_projected_full)
 
         candidates = undrafted_df.head(min(len(undrafted_df), 60)).copy()
@@ -305,43 +331,14 @@ class JointOptimizer:
                 simulated_roster = current_roster + [player_dict]
 
                 # Project filling remaining unfilled starter slots using realistic future replacement baselines
-                sim_qbs = len([p for p in simulated_roster if p["position"] == "QB"])
-                sim_rbs = len([p for p in simulated_roster if p["position"] == "RB"])
-                sim_wrs = len([p for p in simulated_roster if p["position"] == "WR"])
-                sim_tes = len([p for p in simulated_roster if p["position"] == "TE"])
-
-                projected_full = list(simulated_roster)
-
-                if sim_qbs < 2:
-                    needed = 2 - sim_qbs
-                    qb_base = pos_future_baselines.get("QB", 75.0)
-                    for _ in range(needed):
-                        projected_full.append({"position": "QB", "ufl_pts": qb_base})
-
-                if sim_rbs < 1:
-                    rb_base = pos_future_baselines.get("RB", 105.0)
-                    projected_full.append({"position": "RB", "ufl_pts": rb_base})
-
-                if sim_wrs < 1:
-                    wr_base = pos_future_baselines.get("WR", 90.0)
-                    projected_full.append({"position": "WR", "ufl_pts": wr_base})
-
-                if sim_tes < 1:
-                    te_base = pos_future_baselines.get("TE", 60.0)
-                    projected_full.append({"position": "TE", "ufl_pts": te_base})
+                projected_full = _project_full_7_starters(simulated_roster)
 
                 # Solve optimal 4-week portfolio score
                 sim_score = self.solve_weekly_starting_lineup(projected_full)
                 raw_gain = round(sim_score - base_portfolio_score, 2)
 
-                # If candidate fills a mandatory unfilled starter slot (e.g. TE1, QB2, WR1, RB1), give proportional priority boost
-                if is_needed_starter:
-                    replacement_base = pos_future_baselines.get(pos, 0.0)
-                    starter_bonus = max(10.0, row["ufl_pts"] - replacement_base)
-                    raw_gain += starter_bonus
-
-                # For bench candidates (raw_gain == 0), calculate non-zero bench depth value
-                if raw_gain == 0.0:
+                # For bench candidates (raw_gain <= 0), calculate non-zero bench depth value
+                if raw_gain <= 0.0:
                     base_bench = row["ufl_pts"] / 100.0
                     if pos == "WR" and cur_wrs < 4:
                         bench_mult = 1.3
@@ -368,6 +365,11 @@ class JointOptimizer:
                 )
                 
                 gain = round(raw_gain * stack_bonus * strat_mult, 2)
+
+                sim_qbs = len([p for p in simulated_roster if p["position"] == "QB"])
+                sim_rbs = len([p for p in simulated_roster if p["position"] == "RB"])
+                sim_wrs = len([p for p in simulated_roster if p["position"] == "WR"])
+                sim_tes = len([p for p in simulated_roster if p["position"] == "TE"])
 
                 if pos == "QB" and sim_qbs <= 2:
                     status = "QB STARTER IMPACT"
@@ -450,15 +452,16 @@ class JointOptimizer:
         candidates_df = candidates_df.sort_values(by="marginal_gain", ascending=False).reset_index(drop=True)
 
         curr_pick_info = draft_state.current_pick_info()
+        target_gov = curr_pick_info["governor"] if curr_pick_info else draft_state.my_team
+        current_roster = draft_state.rosters.get(target_gov, [])
+
         predictor = OpponentPredictor(draft_state)
-        upcoming_opps = predictor.predict_upcoming_opponent_needs()
+        upcoming_opps = predictor.predict_upcoming_opponent_needs(target_governor=target_gov)
         num_opp_picks = len(upcoming_opps)
         picks_until_next = num_opp_picks
         is_back_to_back = (num_opp_picks == 0)
 
         undrafted_pool = projections_df[~projections_df["name"].apply(draft_state.is_drafted)].copy()
-        target_gov = curr_pick_info["governor"] if curr_pick_info else draft_state.my_team
-        current_roster = draft_state.rosters.get(target_gov, [])
 
         # Convert undrafted pool to lightweight list of dicts for ultra-fast simulation
         undrafted_records = undrafted_pool.to_dict("records")

@@ -56,13 +56,13 @@ class VORPCalculator:
         res_df["floor_pts"] = res_df.apply(lambda r: calculate_floor_pts(r["ufl_pts"], r["position"]), axis=1)
 
         if mode == "CEILING":
-            res_df["vorp"] = res_df.apply(lambda r: round(r["vorp"] * 1.15 if r["position"] in ["WR", "RB"] else r["vorp"], 2), axis=1)
-            res_df = res_df.sort_values(by="ceiling_pts", ascending=False).reset_index(drop=True)
+            res_df["vorp"] = res_df.apply(lambda r: round(r["vorp"] * 1.15 if r["position"] in ["WR", "RB"] and r["vorp"] > 0 else r["vorp"], 2), axis=1)
+            res_df["marginal_gain"] = res_df["vorp"]
         elif mode == "FLOOR":
-            res_df = res_df.sort_values(by="floor_pts", ascending=False).reset_index(drop=True)
-        else:
-            res_df = res_df.sort_values(by="vorp", ascending=False).reset_index(drop=True)
+            res_df["vorp"] = res_df.apply(lambda r: round(r["vorp"] * 1.10 if r["position"] == "QB" and r["vorp"] > 0 else (r["vorp"] * 0.90 if r["position"] in ["WR", "TE"] and r["vorp"] > 0 else r["vorp"]), 2), axis=1)
+            res_df["marginal_gain"] = res_df["vorp"]
 
+        res_df = res_df.sort_values(by="vorp", ascending=False).reset_index(drop=True)
         return res_df
 
     def detect_positional_cliffs(self, df: pd.DataFrame, draft_state) -> List[Dict]:

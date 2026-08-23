@@ -19,8 +19,11 @@ class LiveMathEngine(DraftEngineBase):
                 "best_decision": None, "advice_text": "No players remaining.", "engine_name": "Engine 2: Live Joint Math Optimizer"
             }
 
+        gain_col = "marginal_gain" if "marginal_gain" in res_df.columns else "vorp"
+        valid_res = res_df[res_df[gain_col] > -900.0] if gain_col in res_df.columns else res_df
+
         def extract_top_5(pos: str) -> List[Dict]:
-            pos_df = res_df[res_df["position"] == pos].head(5)
+            pos_df = valid_res[valid_res["position"] == pos].head(5)
             res = []
             for _, r in pos_df.iterrows():
                 res.append({
@@ -39,9 +42,6 @@ class LiveMathEngine(DraftEngineBase):
         top_rbs = extract_top_5("RB")
         top_wrs = extract_top_5("WR")
         top_tes = extract_top_5("TE")
-
-        gain_col = "marginal_gain" if "marginal_gain" in res_df.columns else "vorp"
-        valid_res = res_df[res_df[gain_col] > -900.0] if gain_col in res_df.columns else res_df
         top_player = valid_res.iloc[0] if not valid_res.empty else res_df.iloc[0]
         m_gain = top_player.get(gain_col, 0.0)
         best_candidate = {

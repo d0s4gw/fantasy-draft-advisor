@@ -290,9 +290,6 @@ rec_result = active_engine.recommend_from_vorp(vorp_df, draft_state)
 # -------------------------------------------------------------
 # MAIN CONTENT TABS
 # -------------------------------------------------------------
-# -------------------------------------------------------------
-# MAIN CONTENT TABS
-# -------------------------------------------------------------
 tab_cmd, tab_grid_standings, tab_db_mock = st.tabs([
     "⚡ Draft command center",
     "📊 Draft results",
@@ -451,8 +448,15 @@ with tab_cmd:
                 v_match = vorp_df[vorp_df["name"] == p_name]
                 gain_val = v_match.iloc[0]["vorp"] if not v_match.empty and "vorp" in v_match.columns else p.get("marginal_gain", 0.0)
                 
+                if gain_val <= -900.0:
+                    vorp_str = "CAP REACHED"
+                elif gain_val >= 0:
+                    vorp_str = f"+{gain_val:.1f}"
+                else:
+                    vorp_str = f"{gain_val:.1f}"
+
                 st.markdown(f"**{p_name}** ({p['team']}){risk_badge}")
-                st.caption(f"Q1 Pts: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: +{gain_val:.1f}")
+                st.caption(f"Q1 Pts: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}")
 
                 if st.button(f"Draft {p['position']}", key=f"draft_btn_{title}_{p_name}", width="stretch"):
                     p_info = projections_df[projections_df["name"] == p_name].iloc[0]
@@ -679,7 +683,8 @@ with tab_db_mock:
                     v_df = sim_calc.compute_vorp(projections_df, sim_ds, macro_strategy=eval_strat, governor=gov)
                     if v_df.empty:
                         break
-                    top_p = v_df.iloc[0]
+                    valid_df = v_df[v_df["marginal_gain"] > -900.0].copy()
+                    top_p = valid_df.iloc[0] if not valid_df.empty else v_df.iloc[0]
                     sim_ds.record_pick(top_p["name"], top_p["position"], top_p["team"], top_p["ufl_pts"], governor=gov)
                     sim_logs.append({
                         "Pick #": pick_no,

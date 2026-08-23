@@ -177,12 +177,10 @@ class DownloadsWatcherFetcher(BaseFetcher):
             return None, self.read_files
 
         combined = pd.concat(all_dfs, ignore_index=True)
-        # Convert stats to 4-week Q1 totals (QBs per-game, RB/WR/TE season totals)
-        qb_mask = combined["position"] == "QB"
+        # Convert stats to 4-week Q1 totals (FantasyPros CSV exports are per-game averages)
         for col in STAT_COLS:
             if col in combined.columns:
-                combined.loc[qb_mask, col] = (combined.loc[qb_mask, col] * Q1_WEEKS).round(1)
-                combined.loc[~qb_mask, col] = (combined.loc[~qb_mask, col] / GAMES_PER_SEASON * Q1_WEEKS).round(1)
+                combined[col] = (combined[col] * Q1_WEEKS).round(1)
 
         combined["two_pts"] = 0.0
         combined["adp"] = range(1, len(combined) + 1)
@@ -347,12 +345,24 @@ class FFTodayWebFetcher(BaseFetcher):
                         if len(cols) < 6 or not cols[1]:
                             continue
 
-                        raw_name = cols[1]
-                        if raw_name in ["Chg", "Player"] or raw_name.startswith("Quarterback") or raw_name.startswith("Running") or raw_name.startswith("Wide") or raw_name.startswith("Tight"):
+                        raw_name = cols[1].strip()
+                        if (
+                            raw_name in ["Chg", "Player"]
+                            or raw_name.startswith("Player")
+                            or raw_name.startswith("Quarterback")
+                            or raw_name.startswith("Running")
+                            or raw_name.startswith("Wide")
+                            or raw_name.startswith("Tight")
+                            or "Sort First" in raw_name
+                        ):
                             continue
 
                         name = normalize_player_name(raw_name)
-                        team = cols[2] if len(cols) > 2 and len(cols[2]) in [2, 3] else "FA"
+                        if not name:
+                            continue
+
+                        raw_team = cols[2].strip().upper() if len(cols) > 2 else "FA"
+                        team = raw_team if len(raw_team) in [2, 3] and raw_team != "TM" else "FA"
 
                         if pos == "QB" and len(cols) >= 12:
                             # Cmp(4), Att(5), Yds(6), TD(7), INT(8), RushAtt(9), RushYds(10), RushTD(11)
@@ -483,26 +493,39 @@ class FetcherManager:
         # Step 1: Sleeper API Sync
         print("[1/3] 📡 Connecting to Sleeper API for live injuries & player mapping...")
         sleeper_fetcher = SleeperAPIFetcher(self.data_dir)
-        sleeper_data = None if self.offline else sleeper_fetcher.fetch()
+        sleeper_data = None
+        if not self.offline:
+            sleeper_data = sleeper_fetcher.fetch()
+        else:
+            cache_path = os.path.join(self.data_dir, "sleeper_players.json")
+            if os.path.exists(cache_path):
+                try:
+                    with open(cache_path, "r") as f:
+                        sleeper_data = json.load(f)
+                except Exception:
+                    pass
+
         sync_time_str = time.strftime("%Y-%m-%d %H:%M")
 
         if sleeper_data:
             num_players = len(sleeper_data.get("id_to_name", {}))
-            print(f"      ✅ Synced {num_players:,} player records from Sleeper API! (Synced: {sync_time_str})")
+            status_label = "HEALTHY" if not self.offline else "CACHED"
+            date_label = sync_time_str if not self.offline else "Cached JSON"
+            print(f"      ✅ Loaded {num_players:,} player records from Sleeper ({status_label})")
             self.health_matrix["sleeper"] = {
                 "name": "Sleeper API",
-                "status": "HEALTHY",
+                "status": status_label,
                 "players": num_players,
-                "published_date": sync_time_str,
+                "published_date": date_label,
                 "timestamp": time.time()
             }
         else:
             print("      ⚠️ Sleeper API offline or skipped; using local cache.")
             self.health_matrix["sleeper"] = {
                 "name": "Sleeper API",
-                "status": "CACHED",
+                "status": "UNAVAILABLE",
                 "players": 0,
-                "published_date": "Cached JSON",
+                "published_date": "N/A",
                 "timestamp": time.time()
             }
 
@@ -511,38 +534,38 @@ class FetcherManager:
         target_fp = os.path.join(self.sources_dir, "fantasypros.csv")
 
         if not self.offline:
-            # 2a. FantasyPros Live Web Scraper
-            fp_fetcher = FantasyProsWebFetcher(self.data_dir)
-            df_fp, urls_fp = fp_fetcher.fetch()
-            valid_fp, _ = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=20)
+            # 2a. Check ~/Downloads for full FantasyPros CSV exports first (500+ players)
+            dl_fetcher = DownloadsWatcherFetcher(self.data_dir)
+            df_dl, _ = dl_fetcher.fetch()
+            valid_dl, _ = DataSanityGuard.validate(df_dl, "FantasyPros Downloads", min_players=50)
 
-            if valid_fp:
-                df_fp.to_csv(target_fp, index=False)
-                pub_fp = fp_fetcher.published_date
-                print(f"      ✅ Scraped {len(df_fp)} players from FantasyPros Web -> data/sources/fantasypros.csv (Published: {pub_fp})")
+            if valid_dl:
+                df_dl.to_csv(target_fp, index=False)
+                pub_dl = time.strftime("%Y-%m-%d")
+                print(f"      ✅ Auto-ingested {len(df_dl)} players from ~/Downloads -> data/sources/fantasypros.csv (Published: {pub_dl})")
                 self.health_matrix["fantasypros"] = {
-                    "name": "FantasyPros Projections (Live Scraper)",
+                    "name": "FantasyPros Projections (Full Downloads Export)",
                     "status": "HEALTHY",
-                    "source": "Live Web Scraper",
-                    "players": len(df_fp),
-                    "published_date": pub_fp,
+                    "source": "~/Downloads Export",
+                    "players": len(df_dl),
+                    "published_date": pub_dl,
                     "timestamp": time.time()
                 }
             else:
-                print("      • FantasyPros Web Scraper incomplete; checking ~/Downloads fallback...")
-                dl_fetcher = DownloadsWatcherFetcher(self.data_dir)
-                df_dl, _ = dl_fetcher.fetch()
-                valid_dl, _ = DataSanityGuard.validate(df_dl, "FantasyPros Downloads", min_players=50)
-                if valid_dl:
-                    df_dl.to_csv(target_fp, index=False)
-                    pub_dl = time.strftime("%Y-%m-%d")
-                    print(f"      ✅ Auto-ingested {len(df_dl)} players from ~/Downloads -> data/sources/fantasypros.csv (Published: {pub_dl})")
+                # Fallback to public web scraper
+                fp_fetcher = FantasyProsWebFetcher(self.data_dir)
+                df_fp, urls_fp = fp_fetcher.fetch()
+                valid_fp, _ = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=20)
+                if valid_fp:
+                    df_fp.to_csv(target_fp, index=False)
+                    pub_fp = fp_fetcher.published_date
+                    print(f"      ✅ Scraped {len(df_fp)} players from FantasyPros Web -> data/sources/fantasypros.csv (Published: {pub_fp})")
                     self.health_matrix["fantasypros"] = {
-                        "name": "FantasyPros Projections (Downloads Fallback)",
+                        "name": "FantasyPros Projections (Live Scraper)",
                         "status": "HEALTHY",
-                        "source": "~/Downloads Fallback",
-                        "players": len(df_dl),
-                        "published_date": pub_dl,
+                        "source": "Live Web Scraper",
+                        "players": len(df_fp),
+                        "published_date": pub_fp,
                         "timestamp": time.time()
                     }
 

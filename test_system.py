@@ -27,11 +27,16 @@ def test_projection_synthesis():
     assert not df.empty, "Synthesized DataFrame should not be empty"
     assert "ufl_pts" in df.columns, "DataFrame must contain 'ufl_pts'"
     assert "position" in df.columns, "DataFrame must contain 'position'"
-    # Verify CMC math logic
+    # Verify top player math logic
+    bijan = df[df["name"] == "Bijan Robinson"]
+    if not bijan.empty:
+        b_pts = bijan.iloc[0]["ufl_pts"]
+        assert b_pts > 100.0, f"Bijan Robinson should project over 100 Q1 UFL pts, got {b_pts}"
+
     cmc = df[df["name"] == "Christian McCaffrey"]
     if not cmc.empty:
         pts = cmc.iloc[0]["ufl_pts"]
-        assert pts > 100.0, f"CMC should project over 100 Q1 UFL pts, got {pts}"
+        assert pts > 70.0, f"CMC should project over 70 Q1 UFL pts (with live injury discount), got {pts}"
     print("  ✅ ProjectionSynthesizer passed!")
 
 def test_draft_state():
@@ -138,6 +143,13 @@ def test_fuzzy_search():
     
     results_jj = searcher.search("jj")
     assert any("Jefferson" in r for r in results_jj), f"Fuzzy search 'jj' should return Jefferson, got {results_jj}"
+
+    # Test suffix-stripped aliases (mhj, btj)
+    results_mhj = searcher.search("mhj")
+    assert any("Harrison" in r for r in results_mhj), f"Fuzzy search 'mhj' should return Marvin Harrison, got {results_mhj}"
+
+    results_btj = searcher.search("btj")
+    assert any("Thomas" in r for r in results_btj), f"Fuzzy search 'btj' should return Brian Thomas, got {results_btj}"
     print("  ✅ FuzzySearcher passed!")
 
 def test_opponent_predictor():
@@ -179,13 +191,26 @@ def test_bug_fixes():
     ds.reset_draft()
     
     # 1. BUG-1 Verification: Injury math (single discount)
-    # McCaffrey has touch_multiplier 0.95 in overrides.json.
     cmc = df[df["name"] == "Christian McCaffrey"]
     if not cmc.empty:
         pts = cmc.iloc[0]["ufl_pts"]
-        assert pts > 100.0, f"CMC should project > 100 pts with single discount, got {pts}"
+        assert pts > 70.0, f"CMC should project > 70 pts with single discount, got {pts}"
+
+    # 2. Structured Sleeper Injury Parsing Verification
+    from refresh_draft_data import fetch_sleeper_players, extract_injury_map
+    sleeper_raw = fetch_sleeper_players()
+    inj_map = extract_injury_map(sleeper_raw)
+    assert len(inj_map) > 100, f"extract_injury_map should identify > 100 injured players from sleeper cache, got {len(inj_map)}"
+
+    # 3. Mode Sorting Sanity Verification (CEILING and FLOOR modes sort by VORP)
+    calc = VORPCalculator(ds.roster_limits)
+    ceil_df = calc.compute_vorp(df, ds, mode="CEILING")
+    assert ceil_df.iloc[0]["vorp"] >= ceil_df.iloc[1]["vorp"], "CEILING mode must sort by vorp descending"
+
+    floor_df = calc.compute_vorp(df, ds, mode="FLOOR")
+    assert floor_df.iloc[0]["vorp"] >= floor_df.iloc[1]["vorp"], "FLOOR mode must sort by vorp descending"
         
-    # 2. FLAW-1 Verification: Starter vs Roster Standings
+    # 4. FLAW-1 Verification: Starter vs Roster Standings
     jo = JointOptimizer(ds.roster_limits)
     mock_roster = [
         {"position": "QB", "ufl_pts": 100.0},
@@ -203,13 +228,17 @@ def test_bug_fixes():
     assert starter_score == 530.0, f"Starter score expected 530.0 (top 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX), got {starter_score}"
     assert starter_score < total_score, f"Starter score ({starter_score}) must be less than total roster score ({total_score})"
 
-    # 3. Draft Completion Null-Check Verification
+    # 5. Draft Completion Null-Check Verification
     for i in range(72):
         ds.record_pick(f"Player_{i}", "RB", "NFL", 50.0)
     assert ds.current_pick_info() is None, "current_pick_info() must return None after 72 picks"
     curr_pick_i = ds.current_pick_info()
     on_clock = curr_pick_i["governor"] if curr_pick_i else ds.my_team
     assert on_clock == ds.my_team, "on_clock fallback should default to my_team when draft is complete"
+
+    # 6. No Scraper Junk in Synthesized Dataset
+    junk_matches = df[df["name"].str.contains("Sort|Player", case=False, na=False)]
+    assert junk_matches.empty, f"Synthesized dataset should contain zero junk scraper rows, found: {len(junk_matches)}"
 
     print("  ✅ Bug & Flaw Remediation tests passed!")
 
@@ -257,13 +286,14 @@ def test_turn_decision_matrix():
     if te1:
         assert te1["survival_pct"] < 100.0, f"TE1 survival odds at Pick 1 should be < 100% (not artificial 100%), got {te1['survival_pct']}%"
 
-    # 3. Back-to-Back Turn Assertion (Pick 12 / 0 Opponent Picks Away)
+    # 3. Back-to-Back Turn Assertion (Pick 6 -> Pick 7 for Turn Governor / 0 Opponent Picks Away)
     ds.reset_draft()
-    # Record 11 picks to reach Pick 12 (User turn on turn turn)
-    for i in range(11):
+    # Record 5 picks to reach Pick 6 (the Round 1 -> Round 2 turn)
+    for i in range(5):
         ds.record_pick(f"Player_Pick_{i+1}", "RB", "NFL", 50.0, governor=ds.snake_order[i]["governor"])
     
     matrix_turn = e2.generate_war_room_matrix(df, ds)
+    assert matrix_turn["is_back_to_back"] is True, "Matrix at turn must flag is_back_to_back as True"
     for c in matrix_turn["candidates"]:
         assert c["survival_pct"] == 100.0, f"On back-to-back turn, survival odds for {c['name']} must be 100.0%, got {c['survival_pct']}%"
         assert c["regret_cliff"] == 0.0, f"On back-to-back turn, regret cliff for {c['name']} must be 0.0, got {c['regret_cliff']}"

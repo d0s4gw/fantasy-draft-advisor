@@ -188,14 +188,11 @@ def main():
     # Combine all positions
     combined = pd.concat(all_dfs, ignore_index=True)
 
-    # Convert stats to Q1 (4-week) totals
-    # Note: QB stats in FantasyPros CSV are per-game averages; RB/WR/TE stats are season totals.
+    # Convert stats to Q1 (4-week) totals (FantasyPros CSVs are per-game averages)
     stat_cols = ["pass_yds", "pass_tds", "pass_ints", "rush_yds", "rush_tds",
                  "receptions", "rec_yds", "rec_tds"]
-    qb_mask = combined["position"] == "QB"
     for col in stat_cols:
-        combined.loc[qb_mask, col] = (combined.loc[qb_mask, col] * Q1_WEEKS).round(1)
-        combined.loc[~qb_mask, col] = (combined.loc[~qb_mask, col] / GAMES_PER_SEASON * Q1_WEEKS).round(1)
+        combined[col] = (combined[col] * Q1_WEEKS).round(1)
 
     # Add required columns
     combined["two_pts"] = 0.0

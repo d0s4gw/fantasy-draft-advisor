@@ -5,27 +5,28 @@ at-risk player threats, and reach risks before your upcoming turn in the snake d
 """
 
 import pandas as pd
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 
 class OpponentPredictor:
     def __init__(self, draft_state):
         self.draft_state = draft_state
 
-    def predict_upcoming_opponent_needs(self) -> List[Dict]:
+    def predict_upcoming_opponent_needs(self, target_governor: Optional[str] = None) -> List[Dict]:
         """
         Analyzes opponents who will pick between the current pick
-        and the user's next pick turn.
+        and the target governor's next pick turn.
         """
         curr_idx = len(self.draft_state.picks_history)
         snake = self.draft_state.snake_order
-        my_team = self.draft_state.my_team
+        curr_info = self.draft_state.current_pick_info()
+        target_gov = target_governor if target_governor else (curr_info["governor"] if curr_info else self.draft_state.my_team)
         
         upcoming_opponents = []
-        start_i = curr_idx + 1 if (curr_idx < len(snake) and snake[curr_idx]["governor"] == my_team) else curr_idx
+        start_i = curr_idx + 1 if (curr_idx < len(snake) and snake[curr_idx]["governor"] == target_gov) else curr_idx
         for i in range(start_i, len(snake)):
             gov = snake[i]["governor"]
-            if gov == my_team:
-                break # Reached user's turn
+            if gov == target_gov:
+                break # Reached target governor's next turn
 
             
             # Get opponent roster breakdown
