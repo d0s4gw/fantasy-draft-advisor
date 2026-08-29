@@ -32,23 +32,52 @@ st.set_page_config(
 # Inject Custom CSS for Popover Scrolling & Viewport Fitting
 st.markdown("""
 <style>
+/* Sidebar scrolling and smooth scrollbars */
+section[data-testid="stSidebar"] {
+    overflow-y: auto !important;
+}
+
+div[data-testid="stSidebarContent"] {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+}
+
 /* Fix popover body scrolling for popovers in sidebar & main area */
 div[data-testid="stPopoverBody"],
 div[data-baseweb="popover"] > div,
 div[data-baseweb="popover"] {
-    max-height: 75vh !important;
+    max-height: min(48vh, 420px) !important;
     overflow-y: auto !important;
+    overscroll-behavior: contain;
     padding-bottom: 1.5rem !important;
-}
-
-/* Ensure sidebar container allows scrolling without truncation */
-section[data-testid="stSidebar"] {
-    overflow-y: auto !important;
+    scrollbar-width: thin;
 }
 
 /* Ensure popover internal container doesn't cut off status messages */
 div[data-testid="stPopoverBody"] > div {
     padding-bottom: 1rem !important;
+}
+
+/* Smooth scrollbar styling for webkit browsers */
+div[data-testid="stPopoverBody"]::-webkit-scrollbar,
+div[data-testid="stSidebarContent"]::-webkit-scrollbar {
+    width: 6px;
+}
+
+div[data-testid="stPopoverBody"]::-webkit-scrollbar-track,
+div[data-testid="stSidebarContent"]::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+div[data-testid="stPopoverBody"]::-webkit-scrollbar-thumb,
+div[data-testid="stSidebarContent"]::-webkit-scrollbar-thumb {
+    background-color: rgba(150, 150, 150, 0.4);
+    border-radius: 4px;
+}
+
+div[data-testid="stPopoverBody"]::-webkit-scrollbar-thumb:hover,
+div[data-testid="stSidebarContent"]::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(150, 150, 150, 0.7);
 }
 </style>
 """, unsafe_allow_html=True)

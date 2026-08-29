@@ -198,9 +198,19 @@ def test_bug_fixes():
 
     # 2. Structured Sleeper Injury Parsing Verification
     from refresh_draft_data import fetch_sleeper_players, extract_injury_map
-    sleeper_raw = fetch_sleeper_players()
-    inj_map = extract_injury_map(sleeper_raw)
-    assert len(inj_map) > 100, f"extract_injury_map should identify > 100 injured players from sleeper cache, got {len(inj_map)}"
+    mock_sleeper_raw = {
+        "_raw": {
+            "1": {"full_name": "Christian McCaffrey", "injury_status": "Questionable"},
+            "2": {"full_name": "Nick Chubb", "status": "PUP"},
+            "3": {"first_name": "Jonathon", "last_name": "Brooks", "injury_status": "IR"},
+            "4": {"full_name": "Healthy Player", "injury_status": None, "status": "Active"},
+        }
+    }
+    inj_map = extract_injury_map(mock_sleeper_raw)
+    assert inj_map.get("christian mccaffrey") == "QUESTIONABLE", f"Expected QUESTIONABLE for CMC, got {inj_map.get('christian mccaffrey')}"
+    assert inj_map.get("nick chubb") == "PUP", f"Expected PUP for Chubb, got {inj_map.get('nick chubb')}"
+    assert inj_map.get("jonathon brooks") == "IR", f"Expected IR for Brooks, got {inj_map.get('jonathon brooks')}"
+    assert "healthy player" not in inj_map, "Healthy player should not be in injury map"
 
     # 3. Mode Sorting Sanity Verification (CEILING and FLOOR modes sort by VORP)
     calc = VORPCalculator(ds.roster_limits)
