@@ -66,45 +66,58 @@ class StrategyPresetManager:
             )
 
         if strategy == "HERO_RB":
-            if round_no <= 2:
-                if position == "RB" and rb_count == 0:
-                    return 1.30 # Heavily boost first anchor RB
-                elif position == "RB" and rb_count >= 1:
-                    return 0.70 # Heavy penalty on drafting RB2 in early rounds
+            # Phase 1: Lock in 1 elite anchor RB in early rounds (R1-R3)
+            if rb_count == 0:
+                if position == "RB":
+                    return 1.40 # Dominant boost to guarantee securing Hero RB1
+                return 1.00 # Keep all other positions at clean baseline (no cross-boost)
+            # Phase 2: Once RB1 is secured, strictly avoid RB2 in early/mid rounds (R2-R5)
+            elif rb_count == 1 and round_no <= 5:
+                if position == "RB":
+                    return 0.60 # Strong suppression of early RB2
                 elif position in ["WR", "QB", "TE"]:
-                    return 1.15
-            elif round_no in [3, 4, 5]:
-                if position == "RB" and rb_count == 1:
-                    return 0.75 # Suppress RB2 until mid rounds
-                elif position in ["WR", "QB", "TE"]:
-                    return 1.20
+                    return 1.25 # Funnel draft capital into elite WRs, 2 starting QBs, and TE
+            # Phase 3: In mid-late rounds (R6-R9), target high-upside RB2/RB3 value
+            elif round_no >= 6 and rb_count < 3:
+                if position == "RB":
+                    return 1.25 # Prioritize filling out remaining RB slots
 
         elif strategy == "ZERO_RB":
+            # Phase 1: Complete embargo on RBs in Rounds 1-4
             if round_no <= 4:
                 if position == "RB":
-                    return 0.60 # Heavy penalty on early RBs
+                    return 0.50 # Heavy penalty on early RBs
                 elif position in ["WR", "QB", "TE"]:
-                    return 1.25 # Boost early pass-catchers and elite QBs/TEs
-            elif round_no >= 5:
-                if position == "RB" and rb_count < 2:
-                    return 1.30 # Boost high-upside RBs in mid rounds
+                    return 1.30 # Maximum priority on early pass-catchers, elite QBs, and TE
+            # Phase 2: Hammer high-upside RB volume in Rounds 5-9 to satisfy 3 RB minimum
+            elif round_no >= 5 and rb_count < 3:
+                if position == "RB":
+                    return 1.35 # Strongly boost mid-round RBs to build RB room
 
         elif strategy == "ROBUST_RB":
-            if round_no <= 3:
-                if position == "RB" and rb_count < 2:
-                    return 1.35 # Heavily prioritize early dual workhorse RBs
+            # Phase 1: Lock in 2 workhorse RBs in Rounds 1-3
+            if rb_count < 2 and round_no <= 3:
+                if position == "RB":
+                    return 1.40 # Heavy priority on early dual workhorse RBs
                 elif position in ["TE", "QB"]:
-                    return 0.85 # Deprioritize early luxury TE/QB picks
-            elif round_no in [4, 5, 6]:
-                if position in ["WR", "QB", "TE"]:
-                    return 1.15
+                    return 0.80 # Deprioritize early luxury TE/QB picks
+            # Phase 2: Once 2 RBs are locked (or R4+), pivot aggressively to WR/QB/TE
+            elif round_no >= 3 or rb_count >= 2:
+                if position == "RB" and rb_count >= 2 and round_no <= 6:
+                    return 0.70 # Suppress 3rd RB early to ensure WR/QB starter quality
+                elif position in ["WR", "QB", "TE"] and round_no <= 6:
+                    return 1.25 # Boost WR/QB/TE starters
 
         elif strategy == "ELITE_TE":
-            if round_no <= 4 and te_count == 0:
+            # Prioritize securing a top-tier TE1 (Bowers/McBride) in Rounds 2-4
+            if te_count == 0 and 2 <= round_no <= 4:
                 if position == "TE":
-                    return 1.50 # Heavy boost to secure Tier-1 TE (Bowers/McBride)
+                    return 1.50 # Decisive boost to secure Tier-1 TE anchor
                 elif position == "RB":
-                    return 0.85 # Slight deprioritization of early RBs to clear path for TE1
+                    return 0.85 # Slight deprioritization of RB to clear path for TE1
+            elif te_count >= 1 and round_no <= 7:
+                if position == "TE":
+                    return 0.50 # Do not draft backup TE early
 
         return 1.0
 

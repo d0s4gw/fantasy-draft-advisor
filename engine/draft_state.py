@@ -157,7 +157,7 @@ class DraftState:
 
     def load_state(self):
         """Loads state from JSON."""
-        if os.path.exists(self.state_path):
+        if os.path.exists(self.state_path) and os.path.getsize(self.state_path) > 0:
             try:
                 with open(self.state_path, "r") as f:
                     data = json.load(f)
