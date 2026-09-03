@@ -139,7 +139,7 @@ class ProjectionSynthesizer:
             if "status" in player_override:
                 inj_status = str(player_override["status"]).upper().strip()
 
-            if inj_status in ["OUT", "IR", "PUP", "SUS"]:
+            if inj_status in ["OUT", "IR", "PUP", "SUS", "SUSPENDED", "DNR", "INJURED RESERVE", "NFI"]:
                 inj_mult = 0.0
             elif inj_status == "DOUBTFUL":
                 inj_mult = 0.25
