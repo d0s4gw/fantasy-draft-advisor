@@ -1,6 +1,6 @@
 """
 Feasible Joint Portfolio Draft Optimizer Engine.
-Solves exact 4-week optimal weekly starting lineups:
+Solves exact Q2 (4-week) optimal weekly starting lineups:
   - 2 QBs
   - 1 RB
   - 1 WR
@@ -8,6 +8,8 @@ Solves exact 4-week optimal weekly starting lineups:
   - 2 FLEX (best remaining RB/WR/TE)
   - 5 Bench (0 pts)
 
+Bye Week Support: Players score 0 pts in their bye week; the optimizer
+automatically benches them and starts the best available bench player.
 Uses realistic future-pick replacement baselines for unfilled starter slots
 to accurately evaluate the marginal cost of delaying a position.
 """
@@ -29,21 +31,25 @@ def _get_positional_baseline(df: pd.DataFrame, pos: str, target_idx: int) -> flo
 
 
 class JointOptimizer:
-    def __init__(self, roster_limits: dict):
+    def __init__(self, roster_limits: dict, weeks: list = None, bye_weeks_map: dict = None):
         self.roster_limits = roster_limits
+        self.weeks = weeks if weeks is not None else [5, 6, 7, 8]  # Q2 default
+        self.bye_weeks_map = bye_weeks_map if bye_weeks_map is not None else {}
+        self._num_weeks = len(self.weeks)
 
-    def get_optimal_lineup_details(self, roster: List[Dict], projections_df=None) -> Dict[str, Any]:
+    def get_optimal_lineup_details(self, roster: List[Dict], projections_df=None, week: int = None) -> Dict[str, Any]:
         """
         Solves and returns complete details for the optimal starting lineup & bench:
           - 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE) starters.
           - 5 Bench players.
-          - Starter Q1 Pts & Weekly PPG.
-          - Total Roster Q1 Pts & Weekly PPG.
+          - Starter Q2 Pts & Weekly PPG.
+          - Total Roster Q2 Pts & Weekly PPG.
           - Starter Efficiency % (Starter Pts / Roster Pts * 100).
           - Positional point breakdown (QB, RB, WR, TE, FLEX).
           - Best bench backup player.
           - Starters filled count (0 to 7).
         
+        If `week` is provided, scores players at their bye week as 0 pts (bye-aware).
         If projections_df is provided, player ufl_pts are refreshed from current
         projections instead of using the stale snapshot from pick time.
         """
@@ -54,9 +60,11 @@ class JointOptimizer:
                     "TE1": None, "FLEX1": None, "FLEX2": None
                 },
                 "bench": [],
-                "starter_q1_pts": 0.0,
+                "starter_q2_pts": 0.0,
+                "starter_q1_pts": 0.0,  # legacy alias
                 "starter_weekly_ppg": 0.0,
-                "total_roster_q1_pts": 0.0,
+                "total_roster_q2_pts": 0.0,
+                "total_roster_q1_pts": 0.0,  # legacy alias
                 "total_roster_weekly_ppg": 0.0,
                 "starter_efficiency_pct": 0.0,
                 "starters_filled": 0,
@@ -76,7 +84,25 @@ class JointOptimizer:
             if projections_df is not None and p_name:
                 match = projections_df[projections_df["name"] == p_name]
                 if not match.empty:
-                    p_copy["ufl_pts"] = match.iloc[0]["ufl_pts"]
+                    if week is not None:
+                        # Use per-week column for bye-aware scoring
+                        week_col = f"ufl_pts_w{week}"
+                        if week_col in match.columns:
+                            p_copy["ufl_pts"] = float(match.iloc[0][week_col])
+                        else:
+                            p_copy["ufl_pts"] = float(match.iloc[0]["ufl_pts"]) / self._num_weeks
+                    else:
+                        p_copy["ufl_pts"] = match.iloc[0]["ufl_pts"]
+            elif week is not None:
+                # Apply bye zeroing using bye_weeks_map
+                p_team = p_copy.get("team", "")
+                player_bye = self.bye_weeks_map.get(p_team, 0)
+                if player_bye == week:
+                    p_copy["ufl_pts"] = 0.0
+                else:
+                    # Distribute total Q2 pts evenly across non-bye active weeks
+                    total_pts = p_copy.get("ufl_pts", 0.0)
+                    p_copy["ufl_pts"] = round(total_pts / self._num_weeks, 2)
 
             norm_roster.append(p_copy)
 
@@ -122,10 +148,10 @@ class JointOptimizer:
         pts_flex2 = flex2["ufl_pts"] if flex2 else 0.0
 
         starter_q1_pts = pts_qb1 + pts_qb2 + pts_rb1 + pts_wr1 + pts_te1 + pts_flex1 + pts_flex2
-        starter_weekly_ppg = starter_q1_pts / 4.0
+        starter_weekly_ppg = starter_q1_pts / max(len(self.weeks), 1)
 
         total_roster_q1_pts = sum(p["ufl_pts"] for p in norm_roster)
-        total_roster_weekly_ppg = total_roster_q1_pts / 4.0
+        total_roster_weekly_ppg = total_roster_q1_pts / max(len(self.weeks), 1)
 
         starter_efficiency_pct = (starter_q1_pts / total_roster_q1_pts * 100.0) if total_roster_q1_pts > 0 else 0.0
         starters_filled = sum(1 for s in starters.values() if s is not None)
@@ -144,9 +170,11 @@ class JointOptimizer:
         return {
             "starters": starters,
             "bench": bench,
-            "starter_q1_pts": starter_q1_pts,
+            "starter_q2_pts": starter_q1_pts,
+            "starter_q1_pts": starter_q1_pts,  # legacy alias
             "starter_weekly_ppg": starter_weekly_ppg,
-            "total_roster_q1_pts": total_roster_q1_pts,
+            "total_roster_q2_pts": total_roster_q1_pts,
+            "total_roster_q1_pts": total_roster_q1_pts,  # legacy alias
             "total_roster_weekly_ppg": total_roster_weekly_ppg,
             "starter_efficiency_pct": starter_efficiency_pct,
             "starters_filled": starters_filled,
@@ -155,13 +183,63 @@ class JointOptimizer:
             "positional_ppg": pos_ppg
         }
 
-    def solve_weekly_starting_lineup(self, roster: List[Dict], projections_df=None) -> float:
+    def solve_weekly_starting_lineup(self, roster: List[Dict], projections_df=None, week: int = None) -> float:
         """
         Solves the exact optimal weekly starting lineup score from a list of player dicts.
         Starters: 2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX (RB/WR/TE).
         Vacant required starter slots score 0.0 pts!
+        If `week` is provided, players on bye that week score 0 pts.
         """
-        return self.get_optimal_lineup_details(roster, projections_df=projections_df)["starter_q1_pts"]
+        return self.get_optimal_lineup_details(roster, projections_df=projections_df, week=week)["starter_q2_pts"]
+
+    def solve_4_week_portfolio(
+        self,
+        roster: List[Dict],
+        projections_df=None,
+        weeks: List[int] = None,
+        bye_weeks_map: dict = None
+    ) -> float:
+        """
+        Solves the exact optimal 4-week portfolio score across all scoring weeks.
+        For each week, players on bye score 0 pts and the optimizer starts the
+        best available bench player in their place.
+        Returns the total Q2 portfolio score (sum of 4 weekly optimal lineup scores).
+        """
+        target_weeks = weeks if weeks is not None else self.weeks
+        target_bye_map = bye_weeks_map if bye_weeks_map is not None else self.bye_weeks_map
+        total = 0.0
+        for week in target_weeks:
+            week_roster = []
+            for p in roster:
+                p_copy = dict(p)
+                p_team = p_copy.get("team", "")
+                player_bye = target_bye_map.get(p_team, 0)
+                if projections_df is not None:
+                    p_name = p_copy.get("name") or p_copy.get("player_name") or ""
+                    match = projections_df[projections_df["name"] == p_name]
+                    if not match.empty:
+                        week_col = f"ufl_pts_w{week}"
+                        if week_col in match.columns:
+                            p_copy["ufl_pts"] = float(match.iloc[0][week_col])
+                        elif player_bye == week:
+                            p_copy["ufl_pts"] = 0.0
+                        else:
+                            p_copy["ufl_pts"] = round(float(match.iloc[0]["ufl_pts"]) / len(target_weeks), 2)
+                    else:
+                        if player_bye == week:
+                            p_copy["ufl_pts"] = 0.0
+                        else:
+                            total_pts = p_copy.get("ufl_pts", 0.0)
+                            p_copy["ufl_pts"] = round(total_pts / len(target_weeks), 2)
+                else:
+                    if player_bye == week:
+                        p_copy["ufl_pts"] = 0.0
+                    else:
+                        total_pts = p_copy.get("ufl_pts", 0.0)
+                        p_copy["ufl_pts"] = round(total_pts / len(target_weeks), 2)
+                week_roster.append(p_copy)
+            total += self.get_optimal_lineup_details(week_roster)["starter_q2_pts"]
+        return round(total, 2)
 
     def calculate_stack_bonus(self, player_dict: Dict, current_roster: List[Dict]) -> float:
         """
@@ -209,7 +287,7 @@ class JointOptimizer:
 
         target_gov = governor if governor else (draft_state.current_pick_info()["governor"] if draft_state and draft_state.current_pick_info() else draft_state.my_team)
         current_roster = draft_state.rosters.get(target_gov, [])
-        base_portfolio_score = self.solve_weekly_starting_lineup(current_roster)
+        base_portfolio_score = self.solve_4_week_portfolio(current_roster)
         
         picks_made = len(current_roster)
         picks_remaining_total = 12 - picks_made
@@ -281,9 +359,9 @@ class JointOptimizer:
 
             return projected
 
-        # Calculate base portfolio score with 7 starters filled
+        # Calculate base portfolio score with 7 starters filled — using 4-week bye-aware solver
         base_projected_full = _project_full_7_starters(current_roster)
-        base_portfolio_score = self.solve_weekly_starting_lineup(base_projected_full)
+        base_portfolio_score = self.solve_4_week_portfolio(base_projected_full)
 
         candidates = undrafted_df.head(min(len(undrafted_df), 60)).copy()
         pos_candidates = []
@@ -341,8 +419,8 @@ class JointOptimizer:
                 # Project filling remaining unfilled starter slots using realistic future replacement baselines
                 projected_full = _project_full_7_starters(simulated_roster)
 
-                # Solve optimal 4-week portfolio score
-                sim_score = self.solve_weekly_starting_lineup(projected_full)
+                # Solve optimal 4-week bye-aware portfolio score
+                sim_score = self.solve_4_week_portfolio(projected_full)
                 raw_gain = round(sim_score - base_portfolio_score, 2)
 
                 # For bench candidates (raw_gain <= 0), calculate non-zero bench depth value
@@ -599,6 +677,33 @@ class JointOptimizer:
                 badge = "⚠️ HIGH RISK"
                 badge_desc = "Positional Reach or Secondary Value"
 
+            # Bye week conflict & synergy analysis
+            c_team = cand.get("team", "")
+            c_bye = self.bye_weeks_map.get(c_team, 0)
+            target_weeks = self.weeks
+
+            bye_badge = ""
+            bye_desc = ""
+            if c_bye in target_weeks:
+                # Check if user already owns another player at same position with same bye
+                same_pos_same_bye = [
+                    p for p in current_roster
+                    if p.get("position") == c_pos and self.bye_weeks_map.get(p.get("team", ""), 0) == c_bye
+                ]
+                if same_pos_same_bye:
+                    clash_names = ", ".join([p.get("name") or p.get("player_name", "") for p in same_pos_same_bye])
+                    bye_badge = f"⚠️ BYE CLASH (W{c_bye})"
+                    bye_desc = f"Shares Week {c_bye} bye with {clash_names}"
+                else:
+                    bye_badge = f"🛠️ W{c_bye} BYE"
+                    bye_desc = f"Has Week {c_bye} bye in Q2"
+            elif c_bye > 0:
+                bye_badge = f"✅ CLEAR (W{c_bye})"
+                bye_desc = f"Bye in Week {c_bye} is outside Q2 scoring window"
+            else:
+                bye_badge = "✅ NO BYE"
+                bye_desc = "No bye in scoring window"
+
             follow_ups = candidates_df[(candidates_df["name"] != c_name) & (candidates_df["position"] != c_pos)]
             top_follow = follow_ups.iloc[0]["name"] if not follow_ups.empty else "Best VORP Available"
 
@@ -616,6 +721,9 @@ class JointOptimizer:
                 "ceiling_90": ceiling_90,
                 "badge": badge,
                 "badge_desc": badge_desc,
+                "bye_week": c_bye,
+                "bye_badge": bye_badge,
+                "bye_desc": bye_desc,
                 "recommended_pair": f"{c_name} ({c_pos}) + {top_follow}"
             })
 

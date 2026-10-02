@@ -27,8 +27,8 @@ The `data/` directory houses configuration settings, draft state tracking persis
   "league_name": "UFL Fantasy Football",
   "num_teams": 6,
   "num_rounds": 12,
-  "target_quarter": "Q1",
-  "weeks": [1, 2, 3, 4],
+  "target_quarter": "Q2",
+  "weeks": [5, 6, 7, 8],
   "my_team_name": "Team 1 (User)",
   "governors": [
     "Team 1 (User)",

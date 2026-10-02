@@ -2,8 +2,10 @@
   "league_name": "Fantasy Football League",
   "num_teams": 6,
   "num_rounds": 12,
-  "target_quarter": "Q1",
-  "weeks": [1, 2, 3, 4],
+  "target_quarter": "Q2",
+  "weeks": [5, 6, 7, 8],
+  "num_weeks": 4,
+  "bye_weeks_file": "bye_weeks.json",
   "my_team_name": "Team 1 (User)",
   "governors": [
     "Team 1 (User)",

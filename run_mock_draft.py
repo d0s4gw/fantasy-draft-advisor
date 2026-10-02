@@ -53,8 +53,9 @@ def run_simulation():
 
         print(f"Pick #{pick_no:02d} (R{round_no:02d}) [{gov:<15}]: {p_name:<22} ({p_pos:<2}, {p_team:<3}) — UFL Pts: {p_pts:>5.1f} | {need}")
 
+    tq = draft_state.config.get("target_quarter", "Q2")
     print("\n" + "=" * 70)
-    print("🏆 FINAL PROJECTED Q1 STANDINGS & POINTS")
+    print(f"🏆 FINAL PROJECTED {tq} STANDINGS & POINTS")
     print("=" * 70)
 
     from engine.joint_optimizer import JointOptimizer

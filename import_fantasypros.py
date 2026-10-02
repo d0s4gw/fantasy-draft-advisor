@@ -25,7 +25,7 @@ SOURCES_DIR = os.path.join(DATA_DIR, "sources")
 OUTPUT_FILE = os.path.join(SOURCES_DIR, "fantasypros.csv")
 
 GAMES_PER_SEASON = 17
-Q1_WEEKS = 4
+NUM_Q_WEEKS = 4  # Number of scoring weeks in the target quarter
 
 
 def clean_number(val):
@@ -158,6 +158,21 @@ def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--downloads-dir":
         downloads_dir = os.path.expanduser(sys.argv[2])
 
+    # Load bye weeks from the canonical data/bye_weeks.json
+    bye_weeks_map = {}
+    bye_weeks_path = os.path.join(DATA_DIR, "bye_weeks.json")
+    if os.path.exists(bye_weeks_path):
+        import json
+        with open(bye_weeks_path, "r") as f:
+            raw_bye = json.load(f)
+        bye_weeks_map = {k: int(v) for k, v in raw_bye.items() if not k.startswith("_")}
+        for alias, canonical in raw_bye.get("_aliases", {}).items():
+            if canonical in bye_weeks_map:
+                bye_weeks_map[alias] = bye_weeks_map[canonical]
+        print(f"📅 Loaded bye weeks for {len(bye_weeks_map)} NFL team codes/aliases from bye_weeks.json")
+    else:
+        print("⚠️  bye_weeks.json not found — bye_week column will be 0 for all players")
+
     # Map position to importer function
     positions = {
         "QB": import_qb,
@@ -188,16 +203,18 @@ def main():
     # Combine all positions
     combined = pd.concat(all_dfs, ignore_index=True)
 
-    # Convert stats to Q1 (4-week) totals (FantasyPros CSVs are per-game averages)
+    # Convert stats to target quarter (NUM_Q_WEEKS) totals
+    # FantasyPros CSVs are per-game averages -> multiply by NUM_Q_WEEKS
     stat_cols = ["pass_yds", "pass_tds", "pass_ints", "rush_yds", "rush_tds",
                  "receptions", "rec_yds", "rec_tds"]
     for col in stat_cols:
-        combined[col] = (combined[col] * Q1_WEEKS).round(1)
+        combined[col] = (combined[col] * NUM_Q_WEEKS).round(1)
 
     # Add required columns
     combined["two_pts"] = 0.0
     combined["adp"] = range(1, len(combined) + 1)  # Placeholder ADP by projection rank
-    combined["bye_week"] = 0
+    # Assign bye week from canonical bye_weeks.json
+    combined["bye_week"] = combined["team"].apply(lambda t: bye_weeks_map.get(str(t).upper(), 0))
 
     # Sort by projected value (rough estimate: rush+rec yards)
     combined = combined.sort_values(
@@ -211,7 +228,9 @@ def main():
     combined.to_csv(OUTPUT_FILE, index=False)
 
     print(f"\n✅ Successfully wrote {len(combined)} players to {OUTPUT_FILE}")
-    print(f"   Stats converted: QBs per-game × {Q1_WEEKS}; Skill positions ÷ {GAMES_PER_SEASON} × {Q1_WEEKS}")
+    print(f"   Stats converted: per-game × {NUM_Q_WEEKS} weeks")
+    bye_in_q2 = combined[combined["bye_week"].isin([5, 6, 7, 8])]
+    print(f"   Bye weeks assigned: {len(combined[combined['bye_week'] > 0])} players with byes ({len(bye_in_q2)} with Q2 byes)")
 
     # Show top 5 per position
     for pos in ["QB", "RB", "WR", "TE"]:

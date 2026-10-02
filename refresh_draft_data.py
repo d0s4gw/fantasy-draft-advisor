@@ -140,7 +140,7 @@ def main():
     if not injured_players.empty:
         print(f"\nFound {len(injured_players)} top projected players affected by injuries:")
         for idx, row in injured_players.head(15).iterrows():
-            print(f"  • {row['name']:<22} ({row['position']:<2}, {row['team']:<3}) | Status: {row['injury_status']:<12} | Multiplier: {row['injury_multiplier']:.2f} | Discounted Q1 Pts: {row['ufl_pts']:.1f}")
+            print(f"  • {row['name']:<22} ({row['position']:<2}, {row['team']:<3}) | Status: {row['injury_status']:<12} | Multiplier: {row['injury_multiplier']:.2f} | Discounted {synth.target_quarter} Pts: {row['ufl_pts']:.1f}")
     else:
         print("  🎉 No key starter players currently marked as injured!")
 

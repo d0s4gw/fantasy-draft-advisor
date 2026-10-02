@@ -25,18 +25,22 @@ def render_draft_results(draft_state, projections_df):
 
     # HEADER & VIEW SCALE CONTROL
     c_hdr1, c_hdr2 = st.columns([2, 1])
+    tq_label = draft_state.config.get('target_quarter', 'Q2')
+    weeks = draft_state.config.get('weeks', [5, 6, 7, 8])
+    w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 5–8"
     with c_hdr1:
-        st.subheader("Live Projected Standings & Best Lineup Analysis", anchor=False)
+        st.subheader(f"Live Projected Standings & Best Lineup Analysis ({tq_label} — {w_str})", anchor=False)
     with c_hdr2:
         proj_scale = st.segmented_control(
             "Projections View Mode",
-            ["Weekly Average (PPG)", "Quarter Total (Q1)"],
+            ["Weekly Average (PPG)", f"Quarter Total ({tq_label})"],
             default="Weekly Average (PPG)",
             key="segmented_proj_scale"
         )
 
     is_weekly = (proj_scale == "Weekly Average (PPG)")
-    val_suffix = "PPG" if is_weekly else "Pts"
+    tq = tq_label
+    val_suffix = "PPG" if is_weekly else f"{tq} Pts"
 
     standings_optimizer = JointOptimizer(draft_state.roster_limits)
     
@@ -50,9 +54,23 @@ def render_draft_results(draft_state, projections_df):
         details = standings_optimizer.get_optimal_lineup_details(r_list, projections_df=projections_df)
         gov_details_map[gov] = details
 
-        starter_val = round(details["starter_weekly_ppg"] if is_weekly else details["starter_q1_pts"], 1)
-        total_roster_val = round(details["total_roster_weekly_ppg"] if is_weekly else details["total_roster_q1_pts"], 1)
+        starter_q_pts = details.get("starter_q2_pts", details.get("starter_q1_pts", 0.0))
+        starter_val = round(details["starter_weekly_ppg"] if is_weekly else starter_q_pts, 1)
+        total_roster_q_pts = details.get("total_roster_q2_pts", details.get("total_roster_q1_pts", 0.0))
+        total_roster_val = round(details["total_roster_weekly_ppg"] if is_weekly else total_roster_q_pts, 1)
         pos_vals = details["positional_ppg"] if is_weekly else details["positional_breakdown"]
+
+        # Count byes within the Q2 scoring window for this governor's starters
+        q_weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
+        byes_in_q = 0
+        for p in r_list:
+            p_team = p.get("team", "")
+            # Try to get bye week from projections_df
+            p_match = projections_df[projections_df["name"] == (p.get("player_name") or p.get("name", ""))]
+            if not p_match.empty and "bye_week" in p_match.columns:
+                p_bye = int(p_match.iloc[0]["bye_week"])
+                if p_bye in q_weeks:
+                    byes_in_q += 1
 
         standings_list.append({
             "Governor": gov,
@@ -65,7 +83,8 @@ def render_draft_results(draft_state, projections_df):
             f"TE {val_suffix}": round(pos_vals["TE"], 1),
             f"FLEX {val_suffix}": round(pos_vals["FLEX"], 1),
             "Starter Efficiency": f"{details['starter_efficiency_pct']:.1f}%",
-            f"Total Roster {val_suffix}": total_roster_val
+            f"Total Roster {val_suffix}": total_roster_val,
+            "Byes in Q": byes_in_q
         })
 
         for pos_grp, p_val in pos_vals.items():
@@ -107,16 +126,18 @@ def render_draft_results(draft_state, projections_df):
         # Metric Cards Banner
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         with m_col1:
+            tq_label = draft_state.config.get("target_quarter", "Q2")
             st.metric(
-                "Optimal 7-Starter Score",
+                f"Optimal 7-Starter Score",
                 f"{sel_details['starter_weekly_ppg']:.1f} PPG",
-                delta=f"{sel_details['starter_q1_pts']:.1f} Q1 Pts"
+                delta=f"{sel_details['starter_q1_pts']:.1f} {tq_label} Pts"
             )
         with m_col2:
+            tq_label = draft_state.config.get("target_quarter", "Q2")
             st.metric(
-                "Total Roster Score",
+                f"Total Roster Score",
                 f"{sel_details['total_roster_weekly_ppg']:.1f} PPG",
-                delta=f"{sel_details['total_roster_q1_pts']:.1f} Q1 Pts"
+                delta=f"{sel_details['total_roster_q1_pts']:.1f} {tq_label} Pts"
             )
         with m_col3:
             st.metric(
@@ -154,11 +175,17 @@ def render_draft_results(draft_state, projections_df):
             with target_col:
                 with st.container(border=True):
                     if p_obj:
-                        q1_p = p_obj["ufl_pts"]
-                        ppg_p = q1_p / 4.0
+                        q_pts = p_obj["ufl_pts"]
+                        ppg_p = q_pts / 4.0
                         p_name = p_obj.get("name") or p_obj.get("player_name") or ""
+                        # Look up bye week from projections
+                        p_match_df = projections_df[projections_df["name"] == p_name]
+                        p_bye = int(p_match_df.iloc[0]["bye_week"]) if not p_match_df.empty and "bye_week" in p_match_df.columns else 0
+                        q_weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
+                        tq_label = draft_state.config.get("target_quarter", "Q2")
+                        bye_info = f" | 🛠️ **BYE W{p_bye}** (in {tq_label})" if p_bye in q_weeks else (f" | ✅ BYE W{p_bye}" if p_bye > 0 else "")
                         st.markdown(f"**{label}**: `{p_name}` ({p_obj['position']} • {p_obj['team']})")
-                        st.caption(f"Q1 Projection: **{q1_p:.1f} pts** ({ppg_p:.1f} PPG)")
+                        st.caption(f"{tq_label} Projection: **{q_pts:.1f} pts** ({ppg_p:.1f} PPG){bye_info}")
                     else:
                         st.markdown(f"**{label}**: ⚠️ *VACANT SLOT*")
                         st.caption("Projected output: **0.0 pts** (Need to draft player)")
@@ -175,7 +202,7 @@ def render_draft_results(draft_state, projections_df):
                     "Player": bp_name,
                     "Position": bp["position"],
                     "Team": bp["team"],
-                    "Q1 Pts": f"{bp['ufl_pts']:.1f}",
+                    f"{tq_label} Pts": f"{bp['ufl_pts']:.1f}",
                     "Weekly PPG": f"{bp['ufl_pts'] / 4.0:.1f}"
                 })
             st.dataframe(pd.DataFrame(b_display), width="stretch", hide_index=True)

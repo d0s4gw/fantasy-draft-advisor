@@ -153,11 +153,27 @@ active_engine = LiveMathEngine(draft_state.roster_limits)
 rec_result = active_engine.recommend_from_vorp(vorp_df, draft_state)
 
 # -------------------------------------------------------------
-# MAIN CONTENT TABS
+# MAIN CONTENT HEADER & TABS
 # -------------------------------------------------------------
+tq = draft_state.config.get("target_quarter", "Q2")
+weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
+w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 5–8"
+
+# Prominent Quarter & Target Banner
+col_hdr_title, col_hdr_info = st.columns([3, 2], vertical_alignment="center")
+with col_hdr_title:
+    st.markdown(
+        f"### 🏈 Draft Command Center — :green-background[**{tq} Target ({w_str})**]"
+    )
+with col_hdr_info:
+    st.info(
+        f"🎯 **Scoring Window: {tq} ({w_str})** • 14 teams have byes • Lineups solved weekly",
+        icon=":material/calendar_month:"
+    )
+
 tab_cmd, tab_grid_standings, tab_db_mock = st.tabs([
     "⚡ Draft command center",
-    "📊 Draft results",
+    f"📊 Draft results & {tq} standings",
     "🛠️ Database & mock simulator"
 ])
 
@@ -172,3 +188,4 @@ with tab_grid_standings:
 
 with tab_db_mock:
     render_mock_simulator(draft_state, projections_df, vorp_df, selected_strategy_key, CONFIG_PATH)
+

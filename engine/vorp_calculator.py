@@ -1,8 +1,9 @@
 """
-UFL 4-Week Joint Optimization, Positional Cliff & Squeeze Calculator Engine.
+UFL Q2 4-Week Joint Optimization, Positional Cliff & Squeeze Calculator Engine.
 Uses Joint Lineup Optimization (Knapsack Lineup Solver) to evaluate exact
 Marginal Portfolio Gains for candidate picks, detects positional cliffs,
 and evaluates floor/ceiling spike-week volatility splits.
+Bye Week Support: Cliffs and squeeze alerts annotate bye weeks in Q2 (Weeks 5-8).
 """
 
 import pandas as pd
@@ -80,34 +81,39 @@ class VORPCalculator:
             if len(pos_df) < 2:
                 continue
 
+            top_player = pos_df.iloc[0]["name"]
             top_pts = pos_df.iloc[0]["ufl_pts"]
-            second_pts = pos_df.iloc[1]["ufl_pts"]
-            third_pts = pos_df.iloc[2]["ufl_pts"] if len(pos_df) >= 3 else second_pts * 0.8
+            next_pts = pos_df.iloc[1]["ufl_pts"]
+            # Annotate bye week ONLY if the top player's bye falls within the active scoring window
+            top_bye = int(pos_df.iloc[0].get("bye_week", 0)) if "bye_week" in pos_df.columns else 0
+            active_weeks = draft_state.config.get("weeks", [5, 6, 7, 8]) if hasattr(draft_state, "config") else [5, 6, 7, 8]
+            bye_tag = f" *(BYE W{top_bye})*" if top_bye > 0 and top_bye in active_weeks else ""
+            drop_off = round(top_pts - next_pts, 1)
+            third_pts = pos_df.iloc[2]["ufl_pts"] if len(pos_df) >= 3 else next_pts * 0.8
+            drop_2_to_3 = round(next_pts - third_pts, 1)
 
-            drop_1_to_2 = top_pts - second_pts
-            drop_2_to_3 = second_pts - third_pts
-
-            if drop_1_to_2 >= 15.0 or (top_pts >= 50.0 and len(pos_df) <= 3):
+            if drop_off >= 15.0 or (top_pts >= 50.0 and len(pos_df) <= 3):
                 cliffs.append({
                     "position": pos,
-                    "top_player": pos_df.iloc[0]["name"],
+                    "top_player": top_player,
                     "top_pts": top_pts,
-                    "next_best_pts": second_pts,
-                    "drop_off": round(drop_1_to_2, 1),
+                    "next_best_pts": next_pts,
+                    "drop_off": drop_off,
                     "remaining_in_tier": 1,
-                    "severity": "CRITICAL" if drop_1_to_2 >= 20.0 else "WARNING",
-                    "message": f"🚨 {pos} CLIFF ALERT: **{pos_df.iloc[0]['name']}** ({top_pts:.1f} pts) is the last Tier-1 {pos}. Drop to next best is -{drop_1_to_2:.1f} pts!"
+                    "severity": "CRITICAL" if drop_off >= 20.0 else "WARNING",
+                    "message": f"\U0001f6a8 {pos} CLIFF ALERT: **{top_player}**{bye_tag} ({top_pts:.1f} pts) is the last Tier-1 {pos}. Drop to next best is -{drop_off:.1f} pts!"
                 })
             elif drop_2_to_3 >= 12.0:
+                second_name = pos_df.iloc[1]["name"]
                 cliffs.append({
                     "position": pos,
-                    "top_player": pos_df.iloc[0]["name"],
+                    "top_player": top_player,
                     "top_pts": top_pts,
                     "next_best_pts": third_pts,
-                    "drop_off": round(drop_2_to_3, 1),
+                    "drop_off": drop_2_to_3,
                     "remaining_in_tier": 2,
                     "severity": "NOTICE",
-                    "message": f"⚠️ {pos} TIER BREAK: Only 2 high-tier {pos}s remain ({pos_df.iloc[0]['name']}, {pos_df.iloc[1]['name']}) before a -{drop_2_to_3:.1f} pt cliff."
+                    "message": f"\u26a0\ufe0f {pos} TIER BREAK: Only 2 high-tier {pos}s remain ({top_player}{bye_tag}, {second_name}) before a -{drop_2_to_3:.1f} pt cliff."
                 })
 
         return cliffs
@@ -115,14 +121,15 @@ class VORPCalculator:
     def check_qb_squeeze(self, df: pd.DataFrame, draft_state) -> Tuple[bool, str]:
         """
         Checks if opponents are hoarding QBs and triggering a QB supply squeeze.
-        Calibrated for Q1 UFL 4-week scoring (top QBs score ~35–50 UFL pts).
+        Calibrated for Q2 UFL 4-week scoring. Top QBs with a bye inside Q2 (Weeks 5-8)
+        score ~25% less than those with outside byes; threshold adjusts accordingly.
         """
         if not draft_state or df.empty:
             return False, ""
 
         undrafted_qbs = df[(df["position"] == "QB") & (~df["name"].str.lower().isin(draft_state.drafted_players))]
-        # Top-tier QBs for Q1 UFL scoring (>= 35.0 UFL pts for 4 weeks)
-        top_tier_qbs = undrafted_qbs[undrafted_qbs["ufl_pts"] >= 35.0]
+        # Top-tier threshold: ~30 pts for QBs with a Q2 bye (3 active weeks), ~35+ otherwise
+        top_tier_qbs = undrafted_qbs[undrafted_qbs["ufl_pts"] >= 30.0]
 
         my_qb_count = draft_state.get_governor_roster_breakdown(draft_state.my_team)["QB"]
         picks_remaining = draft_state.picks_until_my_turn()

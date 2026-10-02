@@ -65,29 +65,32 @@ def render_mock_simulator(draft_state, projections_df, vorp_df, selected_strateg
 
                 # NEW: Show final standings after simulation
                 st.markdown("---")
-                st.markdown("##### 🏆 Simulated Final Standings")
+                tq = draft_state.config.get("target_quarter", "Q2")
+                st.markdown(f"##### 🏆 Simulated Final {tq} Standings")
                 standings_optimizer = JointOptimizer(sim_ds.roster_limits)
                 sim_standings = []
                 for gov in sim_ds.governors:
                     r_list = sim_ds.rosters.get(gov, [])
                     details = standings_optimizer.get_optimal_lineup_details(r_list, projections_df=projections_df)
                     is_user = " ⭐" if gov == draft_state.my_team else ""
+                    starter_pts = details.get("starter_q2_pts", details.get("starter_q1_pts", 0.0))
+                    total_pts = details.get("total_roster_q2_pts", details.get("total_roster_q1_pts", 0.0))
                     sim_standings.append({
                         "Governor": f"{gov}{is_user}",
                         "Drafted": len(r_list),
                         "Starter PPG": round(details["starter_weekly_ppg"], 1),
-                        "Starter Q1 Pts": round(details["starter_q1_pts"], 1),
-                        "Total Roster Q1 Pts": round(details["total_roster_q1_pts"], 1),
+                        f"Starter {tq} Pts": round(starter_pts, 1),
+                        f"Total Roster {tq} Pts": round(total_pts, 1),
                         "Efficiency": f"{details['starter_efficiency_pct']:.1f}%",
                     })
-                sim_standings_df = pd.DataFrame(sim_standings).sort_values(by="Starter Q1 Pts", ascending=False).reset_index(drop=True)
+                sim_standings_df = pd.DataFrame(sim_standings).sort_values(by=f"Starter {tq} Pts", ascending=False).reset_index(drop=True)
                 st.dataframe(sim_standings_df, width="stretch", hide_index=True)
 
                 # Highlight user team result
                 user_row = next((s for s in sim_standings if draft_state.my_team in s["Governor"]), None)
                 if user_row:
                     rank = sim_standings_df[sim_standings_df["Governor"].str.contains(draft_state.my_team)].index[0] + 1
-                    st.info(f"📊 **Your team (`{draft_state.my_team}`)** finished **#{rank} of 6** with **{user_row['Starter Q1 Pts']} Q1 Pts** ({user_row['Starter PPG']} PPG)")
+                    st.info(f"📊 **Your team (`{draft_state.my_team}`)** finished **#{rank} of 6** with **{user_row[f'Starter {tq} Pts']} {tq} Pts** ({user_row['Starter PPG']} PPG)")
 
             finally:
                 if os.path.exists(sim_state_path):

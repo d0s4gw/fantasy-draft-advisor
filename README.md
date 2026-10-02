@@ -10,7 +10,7 @@ A high-speed, single-user local Python application built for high-stakes fantasy
    - Rushing & Receiving Yards: **1 pt per 5 yards ($0.20\text{ pts/yd}$)** — 2x multiplier vs standard fantasy.
    - 0.3 PPR, 4 pt Pass TD, -2 INT, 2 pt 2-Point Conversion.
    - Fumble Lost: 0 pts (not penalized). ST Player TD: 6 pts (not projected).
-   - Tailored specifically for **Q1 (Weeks 1–4)**.
+   - Tailored specifically for **Q2 (Weeks 5–8)** with bye week modeling across 14 affected NFL teams.
 
 2. **Knapsack Portfolio VORP & Starter-Only Standings**:
    - Evaluates **Marginal Portfolio Gain** for candidate picks across 7 starters (`2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX`).

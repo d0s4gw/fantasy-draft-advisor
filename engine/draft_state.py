@@ -33,6 +33,22 @@ class DraftState:
         
         self.roster_limits = self.config["roster_settings"]
         
+        # Load bye weeks map
+        bye_file = self.config.get("bye_weeks_file", "bye_weeks.json")
+        bye_path = os.path.join(os.path.dirname(config_path), bye_file)
+        self.bye_weeks_map: Dict[str, int] = {}
+        if os.path.exists(bye_path):
+            try:
+                with open(bye_path, "r") as bf:
+                    b_data = json.load(bf)
+                    self.bye_weeks_map = {k: int(v) for k, v in b_data.items() if not k.startswith("_")}
+                    aliases = b_data.get("_aliases", {})
+                    for alias, canonical in aliases.items():
+                        if canonical in self.bye_weeks_map:
+                            self.bye_weeks_map[alias] = self.bye_weeks_map[canonical]
+            except Exception as e:
+                print(f"Warning: Could not load bye weeks map: {e}")
+
         # Internal state
         self.picks_history: List[Dict] = [] # list of pick dicts
         self.drafted_players: set = set()

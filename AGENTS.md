@@ -23,7 +23,7 @@ This project is a high-speed Python + Streamlit application engineered to optimi
   > order is determined.
 
 - **Draft Format**: 12-Round Snake Draft (72 total picks).
-- **Target Focus**: **Q1 (Weeks 1–4)** performance.
+- **Target Focus**: **Q2 (Weeks 5–8)** performance with automatic 2026 NFL bye week substitutions.
 - **Canonical Rules**: See [LEAGUE_RULES.md](data/LEAGUE_RULES.md) — the single source of truth for all league rules.
 - **Custom UFL Yardage Multiplier**:
   - **Rushing & Receiving**: **1 pt per 5 yards** ($0.20\text{ pts/yd}$) — **2x standard fantasy scoring**.
@@ -117,7 +117,7 @@ fantasy-draft-advisor/
   - `record_pick()` / `undo_last_pick()`: Full stack-based history mutation with auto-save to `data/draft_state.json`.
 
 ### B. UFL Math & Projection Synthesizer (`engine/projection_synth.py`, `engine/scoring.py`, `engine/projection_fetchers.py`)
-- **Auto-Fetch Pipeline (`FetcherManager`)**: Runs automatically at startup (Streamlit & CLI), scanning `~/Downloads` for fresh FantasyPros CSV exports, scraping live web tables as backup, and syncing Sleeper API injuries.
+- **Auto-Fetch Pipeline (`FetcherManager`)**: Runs automatically at startup (Streamlit & CLI), scanning `~/Downloads` for fresh FantasyPros CSV exports, scraping live web tables as backup, aggregating live Sleeper YTD actual stats across completed weeks, and syncing Sleeper API injuries.
 - **Data Quality Guardrails (`DataSanityGuard`)**: Validates row counts ($\ge 20$ players) and schemas before updating source files to prevent corrupt overwrites.
 - **Name Suffix Normalization (`normalize_player_name`)**: Standardizes suffixes (`Jr.`, `III`, `II`, `Sr.`) for clean cross-source player matching.
 - Normalizes column names and applies custom UFL scoring formula:
@@ -128,7 +128,7 @@ fantasy-draft-advisor/
 - Computes exact **Marginal Portfolio Gain** for every available player using 4-week Knapsack solver.
 - Evaluates candidate picks against the user's current roster rather than static baseline replacements.
 - **Refreshed Projections**: `get_optimal_lineup_details()` and `solve_weekly_starting_lineup()` accept optional `projections_df` to use current projection values rather than stale pick-time snapshots.
-- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs ($\ge 35.0$ UFL pts for 4-week Q1) remain $\le 3$ and user has $< 2$ QBs before an extended pick wait.
+- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs remain $\le 3$ and user has $< 2$ QBs before an extended pick wait, calibrated for Q2 bye weeks.
 
 ### D. Recommendation & Turn Strategy Engine (`engine/live_math_engine.py`, `engine/joint_optimizer.py`)
 - **Live Math Engine (`LiveMathEngine`)**: Real-time sub-millisecond Knapsack VORP, starter standings, and opponent scarcity optimizer.

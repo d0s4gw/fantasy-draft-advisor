@@ -1,14 +1,15 @@
 """
 Multi-Source Projection Synthesizer & UFL Converter.
 Combines multiple raw projection CSVs using configurable source weights
-and converts raw stats into custom UFL 4-week points.
+and converts raw stats into custom UFL Q2 (Weeks 5-8) points with
+bye week zeroing and per-week breakdown columns.
 """
 
 import os
 import json
 import pandas as pd
 from engine.scoring import calculate_ufl_points
-from engine.projection_fetchers import normalize_player_name, FetcherManager
+from engine.projection_fetchers import normalize_player_name, FetcherManager, enrich_bye_weeks
 
 class ProjectionSynthesizer:
     # Default scoring coefficients (fallback if config.json missing)
@@ -31,7 +32,7 @@ class ProjectionSynthesizer:
         self.load_config()
 
     def load_config(self):
-        """Loads source weights and overrides configuration."""
+        """Loads source weights, overrides, league config, and bye week schedule."""
         if os.path.exists(self.sources_config_path):
             with open(self.sources_config_path, "r") as f:
                 self.config = json.load(f)
@@ -44,16 +45,40 @@ class ProjectionSynthesizer:
         else:
             self.overrides = {"players": {}}
 
-        # Load scoring rules from league config.json (single source of truth)
+        # Load scoring rules and quarter config from league config.json
+        self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
+        self.weeks = [5, 6, 7, 8]  # default Q2
+        self.target_quarter = "Q2"
         if os.path.exists(self.league_config_path):
             try:
                 with open(self.league_config_path, "r") as f:
                     league_cfg = json.load(f)
                 self.scoring_rules = league_cfg.get("scoring_rules", self.DEFAULT_SCORING_RULES)
+                self.weeks = league_cfg.get("weeks", [5, 6, 7, 8])
+                self.target_quarter = league_cfg.get("target_quarter", "Q2")
+                # Load bye weeks from referenced file
+                bye_file = league_cfg.get("bye_weeks_file", "bye_weeks.json")
             except Exception:
-                self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
+                bye_file = "bye_weeks.json"
         else:
-            self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
+            bye_file = "bye_weeks.json"
+
+        # Load bye weeks schedule
+        self.bye_weeks_map = {}
+        bye_path = os.path.join(self.data_dir, bye_file)
+        if os.path.exists(bye_path):
+            try:
+                with open(bye_path, "r") as f:
+                    raw_bye = json.load(f)
+                # Filter out metadata keys (non-team-abbr keys start with _)
+                self.bye_weeks_map = {k: int(v) for k, v in raw_bye.items() if not k.startswith("_")}
+                # Load aliases so alternative team abbreviations (e.g. JAC->JAX, WSH->WAS) resolve
+                aliases = raw_bye.get("_aliases", {})
+                for alias, canonical in aliases.items():
+                    if canonical in self.bye_weeks_map:
+                        self.bye_weeks_map[alias] = self.bye_weeks_map[canonical]
+            except Exception as e:
+                print(f"⚠️  WARNING: Could not load bye_weeks.json: {e}")
 
     def save_config(self):
         """Saves current sources config."""
@@ -63,7 +88,8 @@ class ProjectionSynthesizer:
     def synthesize(self) -> pd.DataFrame:
         """
         Ingests all active CSV sources, applies weights, calculates consensus
-        projected stats, computes UFL points, and applies overrides.
+        projected stats, computes UFL points, applies bye week zeroing,
+        generates per-week point columns, and applies overrides.
         """
         self.load_config()
         dfs = []
@@ -120,7 +146,6 @@ class ProjectionSynthesizer:
                 "position": pos.upper(),
                 "team": team.upper(),
                 "adp": group["adp"].mean() if "adp" in group.columns else 999.0,
-                "bye_week": int(group["bye_week"].iloc[0]) if "bye_week" in group.columns and pd.notnull(group["bye_week"].iloc[0]) else 0
             }
             
             # Weighted average for stats
@@ -160,10 +185,44 @@ class ProjectionSynthesizer:
                 for col in ["rush_yds", "rush_tds", "receptions", "rec_yds", "rec_tds"]:
                     row[col] = round(row[col] * touch_mult, 1)
 
-            # Compute UFL Fantasy Points from already-discounted stats (no second multiplier)
-            ufl_pts = calculate_ufl_points(row, self.scoring_rules)
-            row["ufl_pts"] = round(ufl_pts, 2)
-            row["points_per_game"] = round(ufl_pts / 4.0, 1)
+            # Get authoritative bye week from the canonical bye_weeks_map
+            team_upper = team.upper()
+            bye_week = self.bye_weeks_map.get(team_upper, 0)
+            # Fallback: check if source CSV had a bye_week column
+            if bye_week == 0 and "bye_week" in group.columns:
+                csv_bye = group["bye_week"].iloc[0]
+                if pd.notnull(csv_bye) and int(csv_bye) > 0:
+                    bye_week = int(csv_bye)
+            row["bye_week"] = bye_week
+
+            # Compute total 4-week UFL Fantasy Points from discounted stats
+            # This is the sum across all scoring weeks, accounting for the bye
+            ufl_pts_full = calculate_ufl_points(row, self.scoring_rules)
+            num_weeks = len(self.weeks)
+            num_active_weeks = sum(1 for w in self.weeks if w != bye_week)
+
+            # Scale total pts: if player has a bye in the scoring window, they only play num_active_weeks
+            # The raw ufl_pts_full is for (num_weeks) game-equivalents; zero the bye week
+            if bye_week in self.weeks and num_weeks > 0:
+                # Per-week value, then zero the bye week
+                per_week_pts = ufl_pts_full / num_weeks
+                ufl_pts = round(per_week_pts * num_active_weeks, 2)
+            else:
+                ufl_pts = round(ufl_pts_full, 2)
+
+            row["ufl_pts"] = ufl_pts
+
+            # Compute per-week point columns for the optimizer
+            for week in self.weeks:
+                col = f"ufl_pts_w{week}"
+                if week == bye_week:
+                    row[col] = 0.0
+                else:
+                    # Distribute evenly across non-bye weeks
+                    row[col] = round(ufl_pts / num_active_weeks, 2) if num_active_weeks > 0 else 0.0
+
+            # Points per active game (PPG)
+            row["points_per_game"] = round(ufl_pts / num_active_weeks, 1) if num_active_weeks > 0 else 0.0
             row["injury_status"] = inj_status
             row["injury_multiplier"] = inj_mult
             

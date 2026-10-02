@@ -339,6 +339,8 @@ def test_auto_fetchers_and_sanity_guard():
     matrix = manager.run_pipeline()
     assert isinstance(matrix, dict), "FetcherManager pipeline should return a health matrix dict"
     assert matrix["sleeper"]["status"] in ["HEALTHY", "CACHED"], "Sleeper status in matrix should be valid"
+    assert "sleeper_ytd" in matrix, "Sleeper YTD actuals must be tracked in health matrix"
+    assert matrix["sleeper_ytd"]["status"] in ["HEALTHY", "CACHED"], "Sleeper YTD status must be valid"
     print("  ✅ Projection Fetchers, Name Normalization & Sanity Guard passed!")
 
 def test_deterministic_monte_carlo_seed():
@@ -622,6 +624,128 @@ def test_projection_freshness():
 
     print("  ✅ Projection Source Freshness check complete!")
 
+def test_bye_weeks():
+    """
+    Tests bye week handling for Q2 scoring:
+    1. bye_weeks.json loads and contains all 32 NFL teams
+    2. ProjectionSynthesizer generates per-week ufl_pts_wN columns
+    3. Players with byes inside Q2 (Weeks 5-8) have ufl_pts_wN = 0.0 for their bye
+    4. solve_4_week_portfolio() scores 0 for a player's bye week and sums correctly
+    5. Cliff detection annotates bye weeks in messages
+    """
+    print("Testing Bye Week Handling (Q2 W5-W8)...")
+    import json
+
+    # 1. Load bye_weeks.json
+    bye_path = os.path.join(DATA_DIR, "bye_weeks.json")
+    assert os.path.exists(bye_path), "data/bye_weeks.json must exist"
+    with open(bye_path, "r") as f:
+        raw_bye = json.load(f)
+    bye_map = {k: int(v) for k, v in raw_bye.items() if not k.startswith("_")}
+    assert len(bye_map) == 32, f"Expected 32 NFL teams in bye_weeks.json, got {len(bye_map)}"
+    # Spot check known byes
+    assert bye_map.get("KC") == 5, "KC bye week should be 5"
+    assert bye_map.get("BUF") == 7, "BUF bye week should be 7"
+    assert bye_map.get("SF") == 8, "SF bye week should be 8"
+    assert bye_map.get("DAL") == 14, "DAL bye week should be 14"
+
+    # 2. ProjectionSynthesizer produces per-week columns for Q2 weeks
+    synth = ProjectionSynthesizer(DATA_DIR)
+    df = synth.synthesize()
+    assert not df.empty, "Synthesized DataFrame should not be empty"
+    q2_weeks = synth.weeks  # should be [5, 6, 7, 8]
+    assert q2_weeks == [5, 6, 7, 8], f"Expected Q2 weeks [5,6,7,8], got {q2_weeks}"
+    for week in q2_weeks:
+        col = f"ufl_pts_w{week}"
+        assert col in df.columns, f"Missing per-week column {col} in synthesized DataFrame"
+
+    # 3. Players with Q2 byes have that week zeroed out
+    # KC has bye W5 — find any KC player
+    kc_players = df[df["team"] == "KC"]
+    if not kc_players.empty:
+        kc_row = kc_players.iloc[0]
+        assert kc_row["ufl_pts_w5"] == 0.0, (
+            f"KC player {kc_row['name']} should have 0 pts in W5 (bye), got {kc_row['ufl_pts_w5']}"
+        )
+        # Non-bye weeks should be > 0 if player has any projections
+        if kc_row["ufl_pts"] > 0:
+            assert kc_row["ufl_pts_w6"] > 0 or kc_row["ufl_pts_w7"] > 0 or kc_row["ufl_pts_w8"] > 0, (
+                f"KC player {kc_row['name']} should have >0 pts in non-bye Q2 weeks"
+            )
+        # Total ufl_pts should equal sum of 4 weekly values
+        weekly_sum = round(
+            kc_row["ufl_pts_w5"] + kc_row["ufl_pts_w6"] +
+            kc_row["ufl_pts_w7"] + kc_row["ufl_pts_w8"], 2
+        )
+        assert abs(weekly_sum - round(kc_row["ufl_pts"], 2)) < 0.1, (
+            f"KC player {kc_row['name']}: sum of weekly pts ({weekly_sum}) should ~= ufl_pts ({kc_row['ufl_pts']})"
+        )
+
+    # Players with byes outside Q2 (e.g. DAL, bye W14) should have no zeroed Q2 week
+    dal_players = df[df["team"] == "DAL"]
+    if not dal_players.empty:
+        dal_row = dal_players.iloc[0]
+        assert dal_row["bye_week"] == 14, f"DAL bye week should be 14, got {dal_row['bye_week']}"
+        if dal_row["ufl_pts"] > 0:
+            for week in q2_weeks:
+                assert dal_row[f"ufl_pts_w{week}"] > 0, (
+                    f"DAL player {dal_row['name']} has bye outside Q2 — W{week} should be > 0"
+                )
+
+    # Team alias check (e.g. JAC abbreviation from FantasyPros maps to JAX bye W7)
+    jac_players = df[df["team"].isin(["JAC", "JAX"])]
+    if not jac_players.empty:
+        jac_row = jac_players.iloc[0]
+        assert jac_row["bye_week"] == 7, f"JAC/JAX player {jac_row['name']} bye_week should be 7, got {jac_row['bye_week']}"
+        assert jac_row["ufl_pts_w7"] == 0.0, f"JAC/JAX player {jac_row['name']} should have 0 pts in W7 (bye), got {jac_row['ufl_pts_w7']}"
+
+    # 4. solve_4_week_portfolio() test
+    # Build a synthetic roster: one KC player (bye W5), one BUF player (bye W7)
+    roster_kc = [{"name": "KC Player", "position": "QB", "team": "KC", "ufl_pts": 120.0}]
+    roster_buf = [{"name": "BUF Player", "position": "QB", "team": "BUF", "ufl_pts": 120.0}]
+
+    optimizer = JointOptimizer({"QB": 2, "RB": 1, "WR": 1, "TE": 1, "FLEX": 2, "BENCH": 5},
+                                weeks=[5, 6, 7, 8], bye_weeks_map=bye_map)
+
+    # KC player with bye W5: should score 0 in W5 and ~30 in each of W6, W7, W8
+    kc_port = optimizer.solve_4_week_portfolio(roster_kc)
+    buf_port = optimizer.solve_4_week_portfolio(roster_buf)
+
+    # Both players have exactly 1 Q2 bye — portfolio should be ~equal (3 active weeks each, same total pts)
+    assert abs(kc_port - buf_port) < 2.0, (
+        f"KC and BUF players (both 1 Q2 bye, same total pts) should have ~equal portfolios: "
+        f"KC={kc_port}, BUF={buf_port}"
+    )
+
+    # A player with no Q2 bye should score more than one with a Q2 bye (same total pts, 4 vs 3 active weeks)
+    # DAL has bye W14 (outside Q2), so all 4 Q2 weeks are active
+    roster_dal = [{"name": "DAL Player", "position": "QB", "team": "DAL", "ufl_pts": 120.0}]
+    dal_port = optimizer.solve_4_week_portfolio(roster_dal)
+    assert dal_port > kc_port, (
+        f"DAL (no Q2 bye, 4 active weeks) should outscore KC (bye W5, 3 active weeks): "
+        f"DAL={dal_port}, KC={kc_port}"
+    )
+
+    # 5. Cliff detection includes bye week annotations
+    ds = DraftState(CONFIG_PATH, STATE_PATH)
+    ds.reset_draft()
+    calc = VORPCalculator(ds.roster_limits)
+    cliffs = calc.detect_positional_cliffs(df, ds)
+    # If any cliff message exists for a player with a Q2 bye, it should annotate the bye
+    for cliff in cliffs:
+        if "BYE W" in cliff.get("message", ""):
+            # Verify the bye week is actually in Q2 (5-8)
+            import re
+            match = re.search(r"BYE W(\d+)", cliff["message"])
+            if match:
+                bye_wk = int(match.group(1))
+                assert 5 <= bye_wk <= 8, (
+                    f"Cliff bye annotation shows W{bye_wk} but only Q2 byes (W5-W8) should be annotated"
+                )
+
+    print("  ✅ Bye Week Handling (Q2) passed!")
+
+
 def run_all_tests():
     print("=" * 60)
     print("🏈 RUNNING UFL DRAFT ADVISOR SYSTEM TEST SUITE")
@@ -644,6 +768,8 @@ def run_all_tests():
     test_mock_draft_roster_compliance()
     test_snake_order_symmetry()
     test_projection_freshness()
+    # Q2 Bye Week Tests
+    test_bye_weeks()
     print("=" * 60)
     print("🎉 ALL SYSTEM TESTS PASSED CLEANLY!")
     print("=" * 60)

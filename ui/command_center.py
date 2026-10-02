@@ -14,17 +14,18 @@ def render_command_center(
 ):
     """Renders the Draft Command Center tab."""
     curr_pick_i = draft_state.current_pick_info()
+    tq = draft_state.config.get("target_quarter", "Q2")
     if not curr_pick_i:
-        st.success("🎉 **DRAFT COMPLETE!** All 72 picks have been recorded.")
+        st.success(f"🎉 **{tq} DRAFT COMPLETE!** All 72 picks have been recorded.")
         on_clock_gov = draft_state.my_team
     else:
         on_clock_gov = curr_pick_i["governor"]
         is_my_turn = (on_clock_gov == draft_state.my_team)
         if is_my_turn:
-            st.error(f"🚨 **ON THE CLOCK**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) — YOUR TURN (`{draft_state.my_team}`)")
+            st.error(f"🚨 **ON THE CLOCK ({tq})**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) — YOUR TURN (`{draft_state.my_team}`)")
         else:
             wait_picks = draft_state.picks_until_my_turn()
-            st.info(f"⏳ **Draft Progress**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) • On clock: `{on_clock_gov}` • **{wait_picks} picks until your turn**")
+            st.info(f"⏳ **Draft Progress ({tq})**: Pick #{curr_pick_i['pick_no']} (Round {curr_pick_i['round']}) • On clock: `{on_clock_gov}` • **{wait_picks} picks until your turn**")
 
     # QB SQUEEZE ALERT
     squeeze_active, squeeze_msg = vorp_calc.check_qb_squeeze(projections_df, draft_state)
@@ -47,7 +48,8 @@ def render_command_center(
     if best_candidate:
         c_rec1, c_rec2 = st.columns([3, 1])
         with c_rec1:
-            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']})")
+            best_pts = best_candidate.get('ufl_pts', 0.0)
+            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']}) — {best_pts:.1f} {tq} Pts")
             st.markdown(rec_result.get("advice_text", ""))
         with c_rec2:
             if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
@@ -92,10 +94,11 @@ def render_command_center(
 
 def _render_war_room(draft_state, rec_projections_df, active_engine, selected_strategy_key, on_clock_gov, curr_pick_i):
     """Renders the Turn Strategy War Room decision matrix."""
-    with st.expander("⚔️ **Turn Strategy War Room — Decision Matrix & Survival Odds**", expanded=(curr_pick_i is not None and on_clock_gov == draft_state.my_team)):
+    tq = draft_state.config.get("target_quarter", "Q2")
+    with st.expander(f"⚔️ **Turn Strategy War Room — {tq} Decision Matrix & Survival Odds**", expanded=(curr_pick_i is not None and on_clock_gov == draft_state.my_team)):
         c_war1, c_war2 = st.columns([4, 1])
         with c_war1:
-            st.markdown("#### Real-Time Candidate Decision Matrix & Survival Simulations")
+            st.markdown(f"#### Real-Time Candidate Decision Matrix & Survival Simulations ({tq})")
         with c_war2:
             if st.button("🔄 Recalculate Matrix", key="btn_recalc_war_room", width="stretch"):
                 st.cache_data.clear()
@@ -111,13 +114,14 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
             if war_room_data.get("top_pair_recommendation"):
                 st.caption(f"🤝 {war_room_data.get('top_pair_recommendation')}")
 
-            st.markdown("##### 📊 Candidate Comparison Matrix")
+            st.markdown(f"##### 📊 {tq} Candidate Comparison Matrix")
             matrix_display = []
             for c in candidates_list:
                 matrix_display.append({
                     "Action Badge": f"{c['badge']}",
+                    "Bye Status": f"{c.get('bye_badge', '')}",
                     "Player": f"{c['name']} ({c['position']} • {c['team']})",
-                    "UFL Pts": f"{c['ufl_pts']:.1f}",
+                    f"{tq} Pts": f"{c['ufl_pts']:.1f}",
                     "Net Gain": f"+{c['marginal_gain']:.1f}",
                     "Survival Odds": f"{c['survival_pct']:.1f}%",
                     "Regret Cliff": f"-{c['regret_cliff']:.1f} Pts" if c['regret_cliff'] > 0 else "0.0 Pts",
@@ -185,7 +189,29 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
                 vorp_str = f"{gain_val:.1f}"
 
             st.markdown(f"**{p_name}** ({p['team']}){risk_badge}")
-            st.caption(f"Q1 Pts: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}")
+            # Show bye week badge for Q2 — highlight byes inside the scoring window
+            bye_wk = 0
+            p_match = projections_df[projections_df["name"] == p_name]
+            if not p_match.empty and "bye_week" in p_match.columns:
+                bye_wk = int(p_match.iloc[0]["bye_week"])
+            tq = draft_state.config.get("target_quarter", "Q2")
+            my_roster = draft_state.rosters.get(draft_state.my_team, [])
+            same_pos_clash = [
+                r for r in my_roster
+                if r.get("position") == p.get("position") and draft_state.bye_weeks_map.get(r.get("team", ""), 0) == bye_wk and bye_wk in weeks_in_q
+            ] if hasattr(draft_state, "bye_weeks_map") else []
+
+            if same_pos_clash:
+                clash_with = same_pos_clash[0].get("player_name") or same_pos_clash[0].get("name", "starter")
+                bye_str = f" ⚠️ **BYE CLASH W{bye_wk}** (w/ {clash_with})"
+            elif bye_wk > 0 and bye_wk in weeks_in_q:
+                bye_str = f" 🛠️ BYE W{bye_wk}"
+            elif bye_wk > 0:
+                bye_str = f" ✅ BYE W{bye_wk} (outside Q)"
+            else:
+                bye_str = ""
+
+            st.caption(f"{tq} Pts: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}{bye_str}")
 
             if st.button(f"Draft {p['position']}", key=f"draft_btn_{title}_{p_name}", width="stretch"):
                 p_info = projections_df[projections_df["name"] == p_name].iloc[0]

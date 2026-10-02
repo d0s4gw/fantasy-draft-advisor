@@ -16,7 +16,7 @@
 | Teams               | 6 ("Governors")            |
 | Draft Format        | 12-Round Snake Draft       |
 | Total Picks         | 72                         |
-| Scoring Window      | Q1 — Weeks 1 through 4    |
+| Scoring Window      | Q2 — Weeks 5 through 8    |
 | Waivers             | **None** (no-waiver league)|
 
 ### Governors (Draft Order)
@@ -113,6 +113,21 @@
 > is **2× the standard fantasy scoring rate** (1 pt / 10 yards). This makes
 > high-volume rushers and yardage-monster receivers significantly more valuable
 > than in standard leagues.
+
+---
+
+## Bye Weeks (Q2 Handling)
+
+- Each NFL team has exactly one bye week during the season (Weeks 5–14).
+- Players score **0 pts** in their team's bye week. The optimizer automatically benches
+  them and starts the best available bench replacement that week.
+- The 2026 bye week schedule is in `data/bye_weeks.json` (single source of truth).
+- **Q2 bye weeks (byes that fall within Weeks 5–8)**:
+  - **Week 5**: Carolina Panthers (CAR), Kansas City Chiefs (KC)
+  - **Week 6**: Cincinnati Bengals (CIN), Detroit Lions (DET), Miami Dolphins (MIA), Minnesota Vikings (MIN)
+  - **Week 7**: Buffalo Bills (BUF), Jacksonville Jaguars (JAX), Los Angeles Chargers (LAC), Washington Commanders (WAS)
+  - **Week 8**: Houston Texans (HOU), New Orleans Saints (NO), New York Giants (NYG), San Francisco 49ers (SF)
+- Teams with byes in Weeks 9–14 are **unaffected** during Q2 scoring (play all 4 weeks).
 
 ---
 

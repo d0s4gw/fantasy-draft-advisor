@@ -1,6 +1,7 @@
 """
 UFL Custom Scoring Calculator Engine.
 Calculates custom fantasy points based on 0.2 pts/yd rushing & receiving multipliers.
+Applies to all quarters (Q1, Q2, etc.) — the quarter context is managed by the synthesizer.
 """
 
 

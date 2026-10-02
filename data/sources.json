@@ -2,7 +2,7 @@
   "sources": [
     {
       "id": "fantasypros",
-      "name": "FantasyPros Projections (Live Scraper)",
+      "name": "FantasyPros Projections (Baseline)",
       "filename": "fantasypros.csv",
       "weight": 1.0,
       "enabled": true,
@@ -10,10 +10,19 @@
       "fetcher_type": "web_scraper"
     },
     {
+      "id": "sleeper_ytd",
+      "name": "Sleeper YTD Actual Performance (Per-Game Pace)",
+      "filename": "sleeper_ytd.csv",
+      "weight": 1.0,
+      "enabled": true,
+      "auto_fetch": true,
+      "fetcher_type": "api"
+    },
+    {
       "id": "fftoday",
       "name": "FFToday Projections (Live Scraper)",
       "filename": "fftoday.csv",
-      "weight": 1.0,
+      "weight": 0.5,
       "enabled": true,
       "auto_fetch": true,
       "fetcher_type": "web_scraper"

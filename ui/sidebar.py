@@ -12,7 +12,14 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
     """Renders the complete sidebar with popovers and control buttons."""
     with st.sidebar:
         st.title("Draft Command Center")
-        st.caption(f"Target: {draft_state.config.get('target_quarter', 'Q1')} (Weeks 1–4) • User: `{draft_state.my_team}`")
+        tq = draft_state.config.get('target_quarter', 'Q2')
+        weeks = draft_state.config.get('weeks', [5, 6, 7, 8])
+        w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 5–8"
+
+        with st.container(border=True):
+            st.markdown(f"🎯 **Target Quarter**: :green-background[**{tq} ({w_str})**]")
+            st.caption(f"👤 Target Team: **`{draft_state.my_team}`**  \n🛠️ Bye weeks active in scoring window")
+
 
         # EXPANDER: LIVE DATA SOURCES & PUBLISHED DATES LOGGING
         with st.popover("📡 Data sources status", icon=":material/dataset:", width="stretch"):
