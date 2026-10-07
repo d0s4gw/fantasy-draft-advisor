@@ -64,7 +64,7 @@ The `ProjectionSynthesizer`:
 1. Loads active CSV sources configured in `data/sources.json`.
 2. Computes weighted average per-game stats based on `weight` attribute.
 3. Scales stats to 4-week totals ($\times 4$) for Q1 targeting.
-4. Applies injury multiplier to stats once (not to final score). OUT/IR = 0×, DOUBTFUL = 0.25×, QUESTIONABLE = 0.75×.
+4. Applies injury multiplier to stats once (not to final score). Games-based return discount scale: 3 games = 0.75×, 2 games = 0.50×, 1 game = 0.25×, 0 games = 0.0× (IR/PUP/SUS = 0.0×, single-game OUT = 0.75×, QUESTIONABLE = 0.75×). Overrides support `expected_games` or `return_week` with per-week missed zeroing.
 5. Applies `touch_multiplier` overrides independently after injury discount.
 6. Generates `ufl_pts` per player from discounted stats.
 

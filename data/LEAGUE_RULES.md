@@ -21,15 +21,15 @@
 
 ### Governors (Draft Order)
 
-1. Team 1 (User) *(User / Target Team)*
-2. Team 2
-3. Team 3
-4. Team 4
-5. Team 5
-6. Team 6
+1. Team 1 (Pick 1)
+2. Team 2 (Pick 2)
+3. Team 3 (Pick 3)
+4. Team 4 (Pick 4)
+5. Team 5 (Pick 5)
+6. Team 6 (User) *(Pick 6 / Turn Slot — Target Team)*
 
-> **NOTE**: The draft order above is a placeholder. Update `data/config.json` (and
-> `data/config.local.json` for real names) once the actual draft order is determined.
+> **NOTE**: Real governor names are kept private in `data/config.local.json` (gitignored).
+> Never commit real personal names to git-tracked files.
 
 ---
 
@@ -177,4 +177,4 @@ The values in `data/config.json` must match the rules above:
 
 ---
 
-*Last updated: 2026-08-03 by Mike Welsh (definitive rules provided directly).*
+*Last updated: 2026-08-03 (definitive rules provided directly).*

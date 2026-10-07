@@ -712,6 +712,7 @@ class JointOptimizer:
                 "position": c_pos,
                 "team": cand["team"],
                 "ufl_pts": cand["ufl_pts"],
+                "q1_pts": float(cand.get("q1_pts", 0.0)),
                 "ppg": round(cand["ufl_pts"] / 4.0, 1),
                 "marginal_gain": c_gain,
                 "projected_team_pts": c_proj_pts,

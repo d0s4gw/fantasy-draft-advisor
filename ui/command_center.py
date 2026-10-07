@@ -49,7 +49,9 @@ def render_command_center(
         c_rec1, c_rec2 = st.columns([3, 1])
         with c_rec1:
             best_pts = best_candidate.get('ufl_pts', 0.0)
-            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']}) — {best_pts:.1f} {tq} Pts")
+            best_q1 = best_candidate.get('q1_pts', 0.0)
+            q1_label = f" | Actual Q1: **{best_q1:.1f}** Pts" if best_q1 and best_q1 > 0 else ""
+            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']}) — Proj {tq}: **{best_pts:.1f}** Pts{q1_label}")
             st.markdown(rec_result.get("advice_text", ""))
         with c_rec2:
             if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
@@ -117,11 +119,14 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
             st.markdown(f"##### 📊 {tq} Candidate Comparison Matrix")
             matrix_display = []
             for c in candidates_list:
+                q1_pts_val = c.get("q1_pts", 0.0)
+                q1_display = f"{q1_pts_val:.1f}" if q1_pts_val > 0 else "—"
                 matrix_display.append({
                     "Action Badge": f"{c['badge']}",
                     "Bye Status": f"{c.get('bye_badge', '')}",
                     "Player": f"{c['name']} ({c['position']} • {c['team']})",
-                    f"{tq} Pts": f"{c['ufl_pts']:.1f}",
+                    "Actual Q1 Pts": q1_display,
+                    f"Proj {tq} Pts": f"{c['ufl_pts']:.1f}",
                     "Net Gain": f"+{c['marginal_gain']:.1f}",
                     "Survival Odds": f"{c['survival_pct']:.1f}%",
                     "Regret Cliff": f"-{c['regret_cliff']:.1f} Pts" if c['regret_cliff'] > 0 else "0.0 Pts",
@@ -156,17 +161,24 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
                 gain_diff = round(p1_c["marginal_gain"] - p2_c["marginal_gain"], 1)
                 surv_diff = round(p1_c["survival_pct"] - p2_c["survival_pct"], 1)
                 cliff_diff = round(p1_c["regret_cliff"] - p2_c["regret_cliff"], 1)
+                p1_q1 = p1_c.get("q1_pts", 0.0)
+                p2_q1 = p2_c.get("q1_pts", 0.0)
+                q1_diff = round(p1_q1 - p2_q1, 1)
 
                 st.markdown(f"""
                 **Head-to-Head Comparison ({p1_name} vs {p2_name})**:
                 - 📈 **Net Portfolio Gain Delta**: `{'+' if gain_diff >= 0 else ''}{gain_diff} Pts`
                 - 🎯 **Survival Odds Delta**: `{'+' if surv_diff >= 0 else ''}{surv_diff}%` ({p1_name}: {p1_c['survival_pct']}% vs {p2_name}: {p2_c['survival_pct']}%)
                 - 🛡️ **Positional Regret Cliff Delta**: `{'+' if cliff_diff >= 0 else ''}{cliff_diff} Pts` (Drop-off if position is passed on)
+                - 📊 **Actual Q1 Performance Delta**: `{'+' if q1_diff >= 0 else ''}{q1_diff} Pts` ({p1_name}: {p1_q1:.1f} Pts vs {p2_name}: {p2_q1:.1f} Pts)
                 """)
 
 
 def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, projections_df, draft_state, on_clock_gov):
     """Renders a single positional column with top-5 players."""
+    tq = draft_state.config.get("target_quarter", "Q2")
+    weeks_in_q = draft_state.config.get("weeks", [5, 6, 7, 8])
+    my_roster = draft_state.rosters.get(draft_state.my_team, [])
     with col_obj:
         st.subheader(title, anchor=False)
         if not players:
@@ -194,8 +206,6 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             p_match = projections_df[projections_df["name"] == p_name]
             if not p_match.empty and "bye_week" in p_match.columns:
                 bye_wk = int(p_match.iloc[0]["bye_week"])
-            tq = draft_state.config.get("target_quarter", "Q2")
-            my_roster = draft_state.rosters.get(draft_state.my_team, [])
             same_pos_clash = [
                 r for r in my_roster
                 if r.get("position") == p.get("position") and draft_state.bye_weeks_map.get(r.get("team", ""), 0) == bye_wk and bye_wk in weeks_in_q
@@ -211,7 +221,12 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             else:
                 bye_str = ""
 
-            st.caption(f"{tq} Pts: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}{bye_str}")
+            q1_val = p.get("q1_pts", 0.0)
+            if (not q1_val or q1_val == 0.0) and not p_match.empty and "q1_pts" in p_match.columns:
+                q1_val = p_match.iloc[0]["q1_pts"]
+            q1_badge = f"Actual Q1: **{float(q1_val):.1f}** | " if q1_val and float(q1_val) > 0 else "Actual Q1: **—** | "
+
+            st.caption(f"{q1_badge}Proj {tq}: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}{bye_str}")
 
             if st.button(f"Draft {p['position']}", key=f"draft_btn_{title}_{p_name}", width="stretch"):
                 p_info = projections_df[projections_df["name"] == p_name].iloc[0]

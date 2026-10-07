@@ -7,6 +7,7 @@ bye week zeroing and per-week breakdown columns.
 
 import os
 import json
+from typing import Optional, Dict, Any, List, Set
 import pandas as pd
 from engine.scoring import calculate_ufl_points
 from engine.projection_fetchers import normalize_player_name, FetcherManager, enrich_bye_weeks
@@ -20,18 +21,28 @@ class ProjectionSynthesizer:
         "two_pt_pts": 2.0
     }
 
+    # Games-based injury return discount scale (Q2 4-week window: 0.75 for 3 games, 0.50 for 2, 0.25 for 1, 0.0 for 0)
+    GAME_DISCOUNT_SCALE = {
+        4: 1.0,
+        3: 0.75,
+        2: 0.50,
+        1: 0.25,
+        0: 0.0
+    }
+
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.sources_config_path = os.path.join(data_dir, "sources.json")
         self.sources_dir = os.path.join(data_dir, "sources")
         self.overrides_path = os.path.join(data_dir, "overrides.json")
         self.league_config_path = os.path.join(data_dir, "config.json")
+        self.overrides = None
         
         # Ensure directories exist
         os.makedirs(self.sources_dir, exist_ok=True)
-        self.load_config()
+        self.load_config(reload_overrides=True)
 
-    def load_config(self):
+    def load_config(self, reload_overrides: bool = False):
         """Loads source weights, overrides, league config, and bye week schedule."""
         if os.path.exists(self.sources_config_path):
             with open(self.sources_config_path, "r") as f:
@@ -39,11 +50,12 @@ class ProjectionSynthesizer:
         else:
             self.config = {"sources": []}
 
-        if os.path.exists(self.overrides_path):
-            with open(self.overrides_path, "r") as f:
-                self.overrides = json.load(f)
-        else:
-            self.overrides = {"players": {}}
+        if reload_overrides or self.overrides is None:
+            if os.path.exists(self.overrides_path):
+                with open(self.overrides_path, "r") as f:
+                    self.overrides = json.load(f)
+            else:
+                self.overrides = {"players": {}}
 
         # Load scoring rules and quarter config from league config.json
         self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
@@ -85,13 +97,15 @@ class ProjectionSynthesizer:
         with open(self.sources_config_path, "w") as f:
             json.dump(self.config, f, indent=2)
 
-    def synthesize(self) -> pd.DataFrame:
+    def synthesize(self, overrides: Optional[dict] = None) -> pd.DataFrame:
         """
         Ingests all active CSV sources, applies weights, calculates consensus
         projected stats, computes UFL points, applies bye week zeroing,
         generates per-week point columns, and applies overrides.
         """
-        self.load_config()
+        if overrides is not None:
+            self.overrides = overrides
+        self.load_config(reload_overrides=False)
         dfs = []
         
         for source in self.config.get("sources", []):
@@ -135,6 +149,20 @@ class ProjectionSynthesizer:
             else:
                 combined[col] = combined[col].fillna(0.0)
 
+        # Build Q1 actual performance mapping from sleeper_ytd.csv (Weeks 1-4 completed)
+        q1_actual_map = {}
+        sleeper_ytd_path = os.path.join(self.sources_dir, "sleeper_ytd.csv")
+        if os.path.exists(sleeper_ytd_path):
+            try:
+                df_ytd = pd.read_csv(sleeper_ytd_path)
+                for _, ytd_row in df_ytd.iterrows():
+                    y_name = normalize_player_name(str(ytd_row.get("name", "")))
+                    if y_name:
+                        pts = calculate_ufl_points(ytd_row, self.scoring_rules)
+                        q1_actual_map[y_name.lower()] = round(pts, 1)
+            except Exception as e:
+                pass
+
         # Weighted aggregation grouped by player name & position
         aggregated = []
         grouped = combined.groupby(["name", "position", "team"])
@@ -146,6 +174,7 @@ class ProjectionSynthesizer:
                 "position": pos.upper(),
                 "team": team.upper(),
                 "adp": group["adp"].mean() if "adp" in group.columns else 999.0,
+                "q1_pts": q1_actual_map.get(name.lower(), 0.0),
             }
             
             # Weighted average for stats
@@ -156,6 +185,7 @@ class ProjectionSynthesizer:
             # Check injury status from group or overrides
             inj_status = "HEALTHY"
             inj_mult = 1.0
+            missed_weeks = set()
             
             if "injury_status" in group.columns and pd.notnull(group["injury_status"].iloc[0]):
                 inj_status = str(group["injury_status"].iloc[0]).upper().strip()
@@ -164,12 +194,48 @@ class ProjectionSynthesizer:
             if "status" in player_override:
                 inj_status = str(player_override["status"]).upper().strip()
 
-            if inj_status in ["OUT", "IR", "PUP", "SUS", "SUSPENDED", "DNR", "INJURED RESERVE", "NFI"]:
+            # Baseline status multipliers
+            if inj_status in ["IR", "PUP", "SUS", "SUSPENDED", "DNR", "INJURED RESERVE", "NFI"]:
                 inj_mult = 0.0
+                missed_weeks = set(self.weeks)
+            elif inj_status == "OUT":
+                # Single-game OUT designation: expected 3 of 4 games in Q2 (misses earliest week)
+                inj_mult = 0.75
+                if self.weeks:
+                    missed_weeks = {self.weeks[0]}
             elif inj_status == "DOUBTFUL":
                 inj_mult = 0.25
             elif inj_status == "QUESTIONABLE":
                 inj_mult = 0.75
+
+            # Handle games-based return timeline overrides (0.75 for 3 games, 0.50 for 2, 0.25 for 1, 0.0 for 0)
+            if "expected_games" in player_override:
+                exp_g = int(player_override["expected_games"])
+                inj_mult = self.GAME_DISCOUNT_SCALE.get(
+                    exp_g, round(max(0.0, min(len(self.weeks), float(exp_g))) / max(1, len(self.weeks)), 2)
+                )
+                num_missed = max(0, len(self.weeks) - exp_g)
+                missed_weeks = set(self.weeks[:num_missed])
+            elif "games_expected" in player_override:
+                exp_g = int(player_override["games_expected"])
+                inj_mult = self.GAME_DISCOUNT_SCALE.get(
+                    exp_g, round(max(0.0, min(len(self.weeks), float(exp_g))) / max(1, len(self.weeks)), 2)
+                )
+                num_missed = max(0, len(self.weeks) - exp_g)
+                missed_weeks = set(self.weeks[:num_missed])
+            elif "return_week" in player_override or "expected_return_week" in player_override:
+                ret_w = int(player_override.get("return_week") or player_override.get("expected_return_week"))
+                missed_weeks = {w for w in self.weeks if w < ret_w}
+                exp_g = sum(1 for w in self.weeks if w >= ret_w)
+                inj_mult = self.GAME_DISCOUNT_SCALE.get(
+                    exp_g, round(max(0.0, min(len(self.weeks), float(exp_g))) / max(1, len(self.weeks)), 2)
+                )
+
+            if "missed_weeks" in player_override:
+                missed_weeks = set(player_override["missed_weeks"])
+
+            if "injury_multiplier" in player_override:
+                inj_mult = float(player_override["injury_multiplier"])
 
             # Apply injury multiplier to stats (single discount point)
             if inj_mult == 0.0:
@@ -212,19 +278,34 @@ class ProjectionSynthesizer:
 
             row["ufl_pts"] = ufl_pts
 
+            # Identify playable weeks (non-bye, non-injury-missed)
+            playable_weeks = [w for w in self.weeks if w != bye_week and w not in missed_weeks]
+            num_playable = len(playable_weeks)
+
             # Compute per-week point columns for the optimizer
             for week in self.weeks:
                 col = f"ufl_pts_w{week}"
-                if week == bye_week:
+                if week == bye_week or week in missed_weeks or inj_mult == 0.0:
                     row[col] = 0.0
                 else:
-                    # Distribute evenly across non-bye weeks
-                    row[col] = round(ufl_pts / num_active_weeks, 2) if num_active_weeks > 0 else 0.0
+                    if num_playable > 0:
+                        row[col] = round(ufl_pts / num_playable, 2)
+                    elif num_active_weeks > 0:
+                        row[col] = round(ufl_pts / num_active_weeks, 2)
+                    else:
+                        row[col] = 0.0
 
             # Points per active game (PPG)
-            row["points_per_game"] = round(ufl_pts / num_active_weeks, 1) if num_active_weeks > 0 else 0.0
+            if num_playable > 0:
+                row["points_per_game"] = round(ufl_pts / num_playable, 1)
+            elif num_active_weeks > 0:
+                row["points_per_game"] = round(ufl_pts / num_active_weeks, 1)
+            else:
+                row["points_per_game"] = 0.0
+
             row["injury_status"] = inj_status
             row["injury_multiplier"] = inj_mult
+            row["missed_weeks"] = sorted(list(missed_weeks))
             
             aggregated.append(row)
 

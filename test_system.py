@@ -27,11 +27,14 @@ def test_projection_synthesis():
     assert not df.empty, "Synthesized DataFrame should not be empty"
     assert "ufl_pts" in df.columns, "DataFrame must contain 'ufl_pts'"
     assert "position" in df.columns, "DataFrame must contain 'position'"
+    assert "q1_pts" in df.columns, "DataFrame must contain 'q1_pts'"
     # Verify top player math logic
     bijan = df[df["name"] == "Bijan Robinson"]
     if not bijan.empty:
         b_pts = bijan.iloc[0]["ufl_pts"]
         assert b_pts > 100.0, f"Bijan Robinson should project over 100 Q1 UFL pts, got {b_pts}"
+        b_q1 = bijan.iloc[0]["q1_pts"]
+        assert b_q1 > 100.0, f"Bijan Robinson Q1 actuals should exceed 100 pts, got {b_q1}"
 
     cmc = df[df["name"] == "Christian McCaffrey"]
     if not cmc.empty:
@@ -578,11 +581,13 @@ def test_snake_order_symmetry():
         assert last_gov == first_gov, \
             f"Back-to-back turn error at R{r}/R{r+1}: {last_gov} != {first_gov}"
 
-    # Verify user (Pick 5, index 4) gets back-to-back at picks 5 and 8
-    assert ds.snake_order[4]["governor"] == ds.my_team, \
-        f"Pick 5 should be user ({ds.my_team}), got {ds.snake_order[4]['governor']}"
-    assert ds.snake_order[7]["governor"] == ds.my_team, \
-        f"Pick 8 should be user ({ds.my_team}), got {ds.snake_order[7]['governor']}"
+    # Verify user picks in Round 1 and Round 2
+    r1_user_idx = ds.my_index
+    r2_user_idx = 11 - ds.my_index
+    assert ds.snake_order[r1_user_idx]["governor"] == ds.my_team, \
+        f"R1 pick {r1_user_idx+1} should be user ({ds.my_team}), got {ds.snake_order[r1_user_idx]['governor']}"
+    assert ds.snake_order[r2_user_idx]["governor"] == ds.my_team, \
+        f"R2 pick {r2_user_idx+1} should be user ({ds.my_team}), got {ds.snake_order[r2_user_idx]['governor']}"
 
     # Verify pick numbering is sequential 1..72
     for i, entry in enumerate(ds.snake_order):
@@ -746,6 +751,64 @@ def test_bye_weeks():
     print("  ✅ Bye Week Handling (Q2) passed!")
 
 
+def test_games_based_injury_discounts():
+    print("Testing Games-Based Injury Return Discount Scale...")
+    synth = ProjectionSynthesizer(DATA_DIR)
+    
+    # 1. Verify class constant scale
+    assert synth.GAME_DISCOUNT_SCALE[4] == 1.0
+    assert synth.GAME_DISCOUNT_SCALE[3] == 0.75
+    assert synth.GAME_DISCOUNT_SCALE[2] == 0.50
+    assert synth.GAME_DISCOUNT_SCALE[1] == 0.25
+    assert synth.GAME_DISCOUNT_SCALE[0] == 0.0
+
+    # 2. Test overrides with expected_games and return_week
+    synth.overrides = {
+        "players": {
+            "Josh Allen": {"expected_games": 3},
+            "Lamar Jackson": {"expected_games": 2},
+            "Brock Purdy": {"expected_games": 1},
+            "Tyler Shough": {"expected_games": 0},
+            "Caleb Williams": {"return_week": 7}
+        }
+    }
+    df = synth.synthesize()
+
+    # Josh Allen: 3 games -> 0.75, week 5 should be 0.0
+    ja = df[df["name"] == "Josh Allen"].iloc[0]
+    assert ja["injury_multiplier"] == 0.75, f"Josh Allen expected 0.75, got {ja['injury_multiplier']}"
+    assert ja["ufl_pts_w5"] == 0.0, "Josh Allen W5 should be 0.0 (missed week)"
+    assert ja["ufl_pts_w6"] > 0.0, "Josh Allen W6 should be active"
+
+    # Lamar Jackson: 2 games -> 0.50, weeks 5-6 should be 0.0
+    lj = df[df["name"] == "Lamar Jackson"].iloc[0]
+    assert lj["injury_multiplier"] == 0.50, f"Lamar Jackson expected 0.50, got {lj['injury_multiplier']}"
+    assert lj["ufl_pts_w5"] == 0.0, "Lamar Jackson W5 should be 0.0"
+    assert lj["ufl_pts_w6"] == 0.0, "Lamar Jackson W6 should be 0.0"
+    assert lj["ufl_pts_w7"] > 0.0, "Lamar Jackson W7 should be active"
+
+    # Brock Purdy: 1 game -> 0.25, weeks 5-7 should be 0.0
+    bp = df[df["name"] == "Brock Purdy"].iloc[0]
+    assert bp["injury_multiplier"] == 0.25, f"Brock Purdy expected 0.25, got {bp['injury_multiplier']}"
+    assert bp["ufl_pts_w5"] == 0.0, "Brock Purdy W5 should be 0.0"
+    assert bp["ufl_pts_w6"] == 0.0, "Brock Purdy W6 should be 0.0"
+    assert bp["ufl_pts_w7"] == 0.0, "Brock Purdy W7 should be 0.0"
+
+    # Tyler Shough: 0 games -> 0.0
+    ts = df[df["name"] == "Tyler Shough"].iloc[0]
+    assert ts["injury_multiplier"] == 0.0, f"Tyler Shough expected 0.0, got {ts['injury_multiplier']}"
+    assert ts["ufl_pts"] == 0.0, "Tyler Shough total pts should be 0.0"
+
+    # Caleb Williams: return_week=7 -> plays weeks 7, 8 (2 games) -> 0.50
+    cw = df[df["name"] == "Caleb Williams"].iloc[0]
+    assert cw["injury_multiplier"] == 0.50, f"Caleb Williams expected 0.50 for return W7, got {cw['injury_multiplier']}"
+    assert cw["ufl_pts_w5"] == 0.0, "Caleb Williams W5 should be 0.0"
+    assert cw["ufl_pts_w6"] == 0.0, "Caleb Williams W6 should be 0.0"
+    assert cw["ufl_pts_w7"] > 0.0, "Caleb Williams W7 should be active"
+
+    print("  ✅ Games-Based Injury Return Discount Scale passed!")
+
+
 def run_all_tests():
     print("=" * 60)
     print("🏈 RUNNING UFL DRAFT ADVISOR SYSTEM TEST SUITE")
@@ -770,6 +833,8 @@ def run_all_tests():
     test_projection_freshness()
     # Q2 Bye Week Tests
     test_bye_weeks()
+    # Games-Based Injury Return Tests
+    test_games_based_injury_discounts()
     print("=" * 60)
     print("🎉 ALL SYSTEM TESTS PASSED CLEANLY!")
     print("=" * 60)

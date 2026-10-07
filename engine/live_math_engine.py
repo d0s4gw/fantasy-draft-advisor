@@ -31,6 +31,7 @@ class LiveMathEngine(DraftEngineBase):
                     "position": r["position"],
                     "team": r["team"],
                     "ufl_pts": r["ufl_pts"],
+                    "q1_pts": float(r.get("q1_pts", 0.0)),
                     "ppg": round(r["ufl_pts"] / 4.0, 1),
                     "marginal_gain": r.get("marginal_gain", r.get("vorp", 0.0)),
                     "adp": r.get("adp", 99.0),
@@ -49,6 +50,7 @@ class LiveMathEngine(DraftEngineBase):
             "position": top_player["position"],
             "team": top_player["team"],
             "ufl_pts": top_player["ufl_pts"],
+            "q1_pts": float(top_player.get("q1_pts", 0.0)),
             "ppg": round(top_player["ufl_pts"] / 4.0, 1),
             "marginal_gain": m_gain
         }

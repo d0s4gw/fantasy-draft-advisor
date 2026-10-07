@@ -11,16 +11,16 @@ This project is a high-speed Python + Streamlit application engineered to optimi
 
 ### Core League Parameters & Scoring Rules
 - **League Size**: 6 Teams ("Governors"):
-  1. `Team 1 (User)` (User / Target Team)
-  2. `Team 2`
-  3. `Team 3`
-  4. `Team 4`
-  5. `Team 5`
-  6. `Team 6`
+  1. `Team 1` (Pick 1)
+  2. `Team 2` (Pick 2)
+  3. `Team 3` (Pick 3)
+  4. `Team 4` (Pick 4)
+  5. `Team 5` (Pick 5)
+  6. `Team 6 (User)` (Pick 6 / Turn Slot — Target Team)
 
-  > **NOTE**: The draft order above is a placeholder. Update `data/config.json`
-  > (and `data/config.local.json` for real governor names) once the actual draft
-  > order is determined.
+  > **NOTE**: Real governor names are kept private and stored exclusively in
+  > `data/config.local.json` (which is gitignored). Never commit real personal names
+  > to git-tracked files.
 
 - **Draft Format**: 12-Round Snake Draft (72 total picks).
 - **Target Focus**: **Q2 (Weeks 5–8)** performance with automatic 2026 NFL bye week substitutions.
@@ -122,7 +122,7 @@ fantasy-draft-advisor/
 - **Name Suffix Normalization (`normalize_player_name`)**: Standardizes suffixes (`Jr.`, `III`, `II`, `Sr.`) for clean cross-source player matching.
 - Normalizes column names and applies custom UFL scoring formula:
   $$\text{UFL Pts} = (\text{RushYds} + \text{RecYds}) \times 0.20 + (\text{RushTD} + \text{RecTD}) \times 6.0 + \text{PassYds} \times 0.04 + \text{PassTD} \times 4.0 - \text{INT} \times 2.0 + \text{Rec} \times 0.3 + \text{2PtConv} \times 2.0$$
-- **Injury Discount Model**: Injury multiplier is applied to raw stats once (not to the final score). `touch_multiplier` overrides are applied independently after the injury discount. OUT/IR/PUP/SUS = 0×, DOUBTFUL = 0.25×, QUESTIONABLE = 0.75×.
+- **Injury Discount Model**: Injury multiplier is applied to raw stats once (not to the final score). Games-based return discount scale for Q2 (4-week window): 3 games = 0.75×, 2 games = 0.50×, 1 game = 0.25×, 0 games = 0.0×. By default, IR/PUP/SUS = 0.0×, single-game OUT = 0.75× (misses earliest week), QUESTIONABLE = 0.75×. Overrides in `data/overrides.json` support `expected_games`, `return_week`, and `touch_multiplier` with automatic zeroing of missed weeks in weekly columns.
 
 ### C. Joint Portfolio Optimizer & VORP (`engine/joint_optimizer.py`, `engine/vorp_calculator.py`)
 - Computes exact **Marginal Portfolio Gain** for every available player using 4-week Knapsack solver.
