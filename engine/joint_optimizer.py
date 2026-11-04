@@ -14,6 +14,8 @@ Uses realistic future-pick replacement baselines for unfilled starter slots
 to accurately evaluate the marginal cost of delaying a position.
 """
 
+import os
+import json
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Any
@@ -33,9 +35,36 @@ def _get_positional_baseline(df: pd.DataFrame, pos: str, target_idx: int) -> flo
 class JointOptimizer:
     def __init__(self, roster_limits: dict, weeks: list = None, bye_weeks_map: dict = None):
         self.roster_limits = roster_limits
-        self.weeks = weeks if weeks is not None else [5, 6, 7, 8]  # Q2 default
-        self.bye_weeks_map = bye_weeks_map if bye_weeks_map is not None else {}
+        self.weeks = weeks if weeks is not None else self._load_default_weeks()
+        self.bye_weeks_map = bye_weeks_map if bye_weeks_map is not None else self._load_default_bye_weeks()
         self._num_weeks = len(self.weeks)
+
+    @staticmethod
+    def _load_default_weeks() -> List[int]:
+        cfg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.json")
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r") as f:
+                    return json.load(f).get("weeks", [9, 10, 11, 12])
+            except Exception:
+                pass
+        return [9, 10, 11, 12]
+
+    @staticmethod
+    def _load_default_bye_weeks() -> Dict[str, int]:
+        bye_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "bye_weeks.json")
+        if os.path.exists(bye_path):
+            try:
+                with open(bye_path, "r") as f:
+                    b_data = json.load(f)
+                b_map = {k: int(v) for k, v in b_data.items() if not k.startswith("_")}
+                for alias, canonical in b_data.get("_aliases", {}).items():
+                    if canonical in b_map:
+                        b_map[alias] = b_map[canonical]
+                return b_map
+            except Exception:
+                pass
+        return {}
 
     def get_optimal_lineup_details(self, roster: List[Dict], projections_df=None, week: int = None) -> Dict[str, Any]:
         """
@@ -679,8 +708,10 @@ class JointOptimizer:
 
             # Bye week conflict & synergy analysis
             c_team = cand.get("team", "")
-            c_bye = self.bye_weeks_map.get(c_team, 0)
-            target_weeks = self.weeks
+            bye_map_active = draft_state.bye_weeks_map if (draft_state and getattr(draft_state, "bye_weeks_map", None)) else self.bye_weeks_map
+            c_bye = bye_map_active.get(c_team, 0)
+            target_weeks = draft_state.config.get("weeks", self.weeks) if (draft_state and hasattr(draft_state, "config")) else self.weeks
+            tq = draft_state.config.get("target_quarter", "Q3") if (draft_state and hasattr(draft_state, "config")) else "Q3"
 
             bye_badge = ""
             bye_desc = ""
@@ -688,7 +719,7 @@ class JointOptimizer:
                 # Check if user already owns another player at same position with same bye
                 same_pos_same_bye = [
                     p for p in current_roster
-                    if p.get("position") == c_pos and self.bye_weeks_map.get(p.get("team", ""), 0) == c_bye
+                    if p.get("position") == c_pos and bye_map_active.get(p.get("team", ""), 0) == c_bye
                 ]
                 if same_pos_same_bye:
                     clash_names = ", ".join([p.get("name") or p.get("player_name", "") for p in same_pos_same_bye])
@@ -696,10 +727,10 @@ class JointOptimizer:
                     bye_desc = f"Shares Week {c_bye} bye with {clash_names}"
                 else:
                     bye_badge = f"🛠️ W{c_bye} BYE"
-                    bye_desc = f"Has Week {c_bye} bye in Q2"
+                    bye_desc = f"Has Week {c_bye} bye in {tq}"
             elif c_bye > 0:
                 bye_badge = f"✅ CLEAR (W{c_bye})"
-                bye_desc = f"Bye in Week {c_bye} is outside Q2 scoring window"
+                bye_desc = f"Bye in Week {c_bye} is outside {tq} scoring window"
             else:
                 bye_badge = "✅ NO BYE"
                 bye_desc = "No bye in scoring window"

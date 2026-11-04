@@ -155,9 +155,10 @@ rec_result = active_engine.recommend_from_vorp(vorp_df, draft_state)
 # -------------------------------------------------------------
 # MAIN CONTENT HEADER & TABS
 # -------------------------------------------------------------
-tq = draft_state.config.get("target_quarter", "Q2")
-weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
-w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 5–8"
+tq = draft_state.config.get("target_quarter", "Q3")
+weeks = draft_state.config.get("weeks", [9, 10, 11, 12])
+w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 9–12"
+num_byes_in_q = sum(1 for k, v in draft_state.bye_weeks_map.items() if k not in ["JAC", "WSH", "AZ", "LVR"] and v in weeks)
 
 # Prominent Quarter & Target Banner
 col_hdr_title, col_hdr_info = st.columns([3, 2], vertical_alignment="center")
@@ -167,7 +168,7 @@ with col_hdr_title:
     )
 with col_hdr_info:
     st.info(
-        f"🎯 **Scoring Window: {tq} ({w_str})** • 14 teams have byes • Lineups solved weekly",
+        f"🎯 **Scoring Window: {tq} ({w_str})** • {num_byes_in_q} teams have byes • Lineups solved weekly",
         icon=":material/calendar_month:"
     )
 

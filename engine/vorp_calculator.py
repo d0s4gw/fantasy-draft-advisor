@@ -86,7 +86,7 @@ class VORPCalculator:
             next_pts = pos_df.iloc[1]["ufl_pts"]
             # Annotate bye week ONLY if the top player's bye falls within the active scoring window
             top_bye = int(pos_df.iloc[0].get("bye_week", 0)) if "bye_week" in pos_df.columns else 0
-            active_weeks = draft_state.config.get("weeks", [5, 6, 7, 8]) if hasattr(draft_state, "config") else [5, 6, 7, 8]
+            active_weeks = draft_state.config.get("weeks", [9, 10, 11, 12]) if hasattr(draft_state, "config") else [9, 10, 11, 12]
             bye_tag = f" *(BYE W{top_bye})*" if top_bye > 0 and top_bye in active_weeks else ""
             drop_off = round(top_pts - next_pts, 1)
             third_pts = pos_df.iloc[2]["ufl_pts"] if len(pos_df) >= 3 else next_pts * 0.8

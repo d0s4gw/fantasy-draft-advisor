@@ -25,9 +25,9 @@ def render_draft_results(draft_state, projections_df):
 
     # HEADER & VIEW SCALE CONTROL
     c_hdr1, c_hdr2 = st.columns([2, 1])
-    tq_label = draft_state.config.get('target_quarter', 'Q2')
-    weeks = draft_state.config.get('weeks', [5, 6, 7, 8])
-    w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 5–8"
+    tq_label = draft_state.config.get('target_quarter', 'Q3')
+    weeks = draft_state.config.get('weeks', [9, 10, 11, 12])
+    w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 9–12"
     with c_hdr1:
         st.subheader(f"Live Projected Standings & Best Lineup Analysis ({tq_label} — {w_str})", anchor=False)
     with c_hdr2:
@@ -60,8 +60,8 @@ def render_draft_results(draft_state, projections_df):
         total_roster_val = round(details["total_roster_weekly_ppg"] if is_weekly else total_roster_q_pts, 1)
         pos_vals = details["positional_ppg"] if is_weekly else details["positional_breakdown"]
 
-        # Count byes within the Q2 scoring window for this governor's starters
-        q_weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
+        # Count byes within the active scoring window for this governor's starters
+        q_weeks = draft_state.config.get("weeks", [9, 10, 11, 12])
         byes_in_q = 0
         for p in r_list:
             p_team = p.get("team", "")
@@ -181,8 +181,8 @@ def render_draft_results(draft_state, projections_df):
                         # Look up bye week from projections
                         p_match_df = projections_df[projections_df["name"] == p_name]
                         p_bye = int(p_match_df.iloc[0]["bye_week"]) if not p_match_df.empty and "bye_week" in p_match_df.columns else 0
-                        q_weeks = draft_state.config.get("weeks", [5, 6, 7, 8])
-                        tq_label = draft_state.config.get("target_quarter", "Q2")
+                        q_weeks = draft_state.config.get("weeks", [9, 10, 11, 12])
+                        tq_label = draft_state.config.get("target_quarter", "Q3")
                         bye_info = f" | 🛠️ **BYE W{p_bye}** (in {tq_label})" if p_bye in q_weeks else (f" | ✅ BYE W{p_bye}" if p_bye > 0 else "")
                         st.markdown(f"**{label}**: `{p_name}` ({p_obj['position']} • {p_obj['team']})")
                         st.caption(f"{tq_label} Projection: **{q_pts:.1f} pts** ({ppg_p:.1f} PPG){bye_info}")

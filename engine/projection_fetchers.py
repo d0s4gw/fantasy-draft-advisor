@@ -288,7 +288,7 @@ class FantasyProsAPIFetcher(BaseFetcher):
     def __init__(self, data_dir: str, api_key: Optional[str] = None, weeks: Optional[List[int]] = None):
         super().__init__("FantasyPros Official API", data_dir)
         self.api_key = api_key or os.environ.get("FANTASYPROS_API_KEY", "").strip()
-        self.weeks = weeks or [5, 6, 7, 8]
+        self.weeks = weeks or [9, 10, 11, 12]
         self.published_date = time.strftime("%Y-%m-%d")
         self.cache_file = os.path.join(self.sources_dir, "fantasypros_api_cache.json")
 

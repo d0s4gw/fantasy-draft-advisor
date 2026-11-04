@@ -59,15 +59,15 @@ class ProjectionSynthesizer:
 
         # Load scoring rules and quarter config from league config.json
         self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
-        self.weeks = [5, 6, 7, 8]  # default Q2
-        self.target_quarter = "Q2"
+        self.weeks = [9, 10, 11, 12]  # default Q3
+        self.target_quarter = "Q3"
         if os.path.exists(self.league_config_path):
             try:
                 with open(self.league_config_path, "r") as f:
                     league_cfg = json.load(f)
                 self.scoring_rules = league_cfg.get("scoring_rules", self.DEFAULT_SCORING_RULES)
-                self.weeks = league_cfg.get("weeks", [5, 6, 7, 8])
-                self.target_quarter = league_cfg.get("target_quarter", "Q2")
+                self.weeks = league_cfg.get("weeks", [9, 10, 11, 12])
+                self.target_quarter = league_cfg.get("target_quarter", "Q3")
                 # Load bye weeks from referenced file
                 bye_file = league_cfg.get("bye_weeks_file", "bye_weeks.json")
             except Exception:

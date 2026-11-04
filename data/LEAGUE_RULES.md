@@ -16,17 +16,17 @@
 | Teams               | 6 ("Governors")            |
 | Draft Format        | 12-Round Snake Draft       |
 | Total Picks         | 72                         |
-| Scoring Window      | Q2 — Weeks 5 through 8    |
+| Scoring Window      | Q3 — Weeks 9 through 12    |
 | Waivers             | **None** (no-waiver league)|
 
 ### Governors (Draft Order)
 
-1. Team 1 (Pick 1)
+1. Team 1 (User) *(Pick 1 / Turn Slot — Target Team)*
 2. Team 2 (Pick 2)
 3. Team 3 (Pick 3)
 4. Team 4 (Pick 4)
 5. Team 5 (Pick 5)
-6. Team 6 (User) *(Pick 6 / Turn Slot — Target Team)*
+6. Team 6 (Pick 6)
 
 > **NOTE**: Real governor names are kept private in `data/config.local.json` (gitignored).
 > Never commit real personal names to git-tracked files.
@@ -116,18 +116,18 @@
 
 ---
 
-## Bye Weeks (Q2 Handling)
+## Bye Weeks (Q3 Handling)
 
 - Each NFL team has exactly one bye week during the season (Weeks 5–14).
 - Players score **0 pts** in their team's bye week. The optimizer automatically benches
   them and starts the best available bench replacement that week.
 - The 2026 bye week schedule is in `data/bye_weeks.json` (single source of truth).
-- **Q2 bye weeks (byes that fall within Weeks 5–8)**:
-  - **Week 5**: Carolina Panthers (CAR), Kansas City Chiefs (KC)
-  - **Week 6**: Cincinnati Bengals (CIN), Detroit Lions (DET), Miami Dolphins (MIA), Minnesota Vikings (MIN)
-  - **Week 7**: Buffalo Bills (BUF), Jacksonville Jaguars (JAX), Los Angeles Chargers (LAC), Washington Commanders (WAS)
-  - **Week 8**: Houston Texans (HOU), New Orleans Saints (NO), New York Giants (NYG), San Francisco 49ers (SF)
-- Teams with byes in Weeks 9–14 are **unaffected** during Q2 scoring (play all 4 weeks).
+- **Q3 bye weeks (byes that fall within Weeks 9–12 — 12 teams total)**:
+  - **Week 9**: Pittsburgh Steelers (PIT), Tennessee Titans (TEN)
+  - **Week 10**: Chicago Bears (CHI), Denver Broncos (DEN), Philadelphia Eagles (PHI), Tampa Bay Buccaneers (TB)
+  - **Week 11**: Atlanta Falcons (ATL), Cleveland Browns (CLE), Green Bay Packers (GB), Los Angeles Rams (LAR), New England Patriots (NE), Seattle Seahawks (SEA)
+  - **Week 12**: *None* (Thanksgiving week — all 32 teams play)
+- Teams with byes in Weeks 5–8 (14 teams) and Weeks 13–14 (6 teams: BAL, IND, LV, NYJ, ARI, DAL) are **unaffected** during Q3 scoring (play all 4 weeks).
 
 ---
 

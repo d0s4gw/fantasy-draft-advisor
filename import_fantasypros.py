@@ -229,8 +229,8 @@ def main():
 
     print(f"\n✅ Successfully wrote {len(combined)} players to {OUTPUT_FILE}")
     print(f"   Stats converted: per-game × {NUM_Q_WEEKS} weeks")
-    bye_in_q2 = combined[combined["bye_week"].isin([5, 6, 7, 8])]
-    print(f"   Bye weeks assigned: {len(combined[combined['bye_week'] > 0])} players with byes ({len(bye_in_q2)} with Q2 byes)")
+    bye_in_q = combined[combined["bye_week"].isin([9, 10, 11, 12])]
+    print(f"   Bye weeks assigned: {len(combined[combined['bye_week'] > 0])} players with byes ({len(bye_in_q)} with Q3 byes)")
 
     # Show top 5 per position
     for pos in ["QB", "RB", "WR", "TE"]:

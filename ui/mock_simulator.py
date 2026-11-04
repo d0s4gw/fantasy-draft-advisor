@@ -65,7 +65,7 @@ def render_mock_simulator(draft_state, projections_df, vorp_df, selected_strateg
 
                 # NEW: Show final standings after simulation
                 st.markdown("---")
-                tq = draft_state.config.get("target_quarter", "Q2")
+                tq = draft_state.config.get("target_quarter", "Q3")
                 st.markdown(f"##### 🏆 Simulated Final {tq} Standings")
                 standings_optimizer = JointOptimizer(sim_ds.roster_limits)
                 sim_standings = []

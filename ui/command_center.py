@@ -14,7 +14,7 @@ def render_command_center(
 ):
     """Renders the Draft Command Center tab."""
     curr_pick_i = draft_state.current_pick_info()
-    tq = draft_state.config.get("target_quarter", "Q2")
+    tq = draft_state.config.get("target_quarter", "Q3")
     if not curr_pick_i:
         st.success(f"🎉 **{tq} DRAFT COMPLETE!** All 72 picks have been recorded.")
         on_clock_gov = draft_state.my_team
@@ -96,7 +96,7 @@ def render_command_center(
 
 def _render_war_room(draft_state, rec_projections_df, active_engine, selected_strategy_key, on_clock_gov, curr_pick_i):
     """Renders the Turn Strategy War Room decision matrix."""
-    tq = draft_state.config.get("target_quarter", "Q2")
+    tq = draft_state.config.get("target_quarter", "Q3")
     with st.expander(f"⚔️ **Turn Strategy War Room — {tq} Decision Matrix & Survival Odds**", expanded=(curr_pick_i is not None and on_clock_gov == draft_state.my_team)):
         c_war1, c_war2 = st.columns([4, 1])
         with c_war1:
@@ -176,8 +176,8 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
 
 def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, projections_df, draft_state, on_clock_gov):
     """Renders a single positional column with top-5 players."""
-    tq = draft_state.config.get("target_quarter", "Q2")
-    weeks_in_q = draft_state.config.get("weeks", [5, 6, 7, 8])
+    tq = draft_state.config.get("target_quarter", "Q3")
+    weeks_in_q = draft_state.config.get("weeks", [9, 10, 11, 12])
     my_roster = draft_state.rosters.get(draft_state.my_team, [])
     with col_obj:
         st.subheader(title, anchor=False)
