@@ -10,7 +10,7 @@ import json
 import urllib.request
 import pandas as pd
 from engine.projection_synth import ProjectionSynthesizer
-from engine.projection_fetchers import FetcherManager, normalize_player_name
+from engine.projection_fetchers import FetcherManager, normalize_player_name, extract_injury_map
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -25,69 +25,6 @@ def fetch_sleeper_players() -> dict:
         with open(SLEEPER_PLAYERS_PATH, "r") as f:
             return json.load(f)
     return {}
-
-def extract_injury_map(sleeper_data: dict) -> dict:
-    """Maps normalized player full_name to injury status (IR, PUP, Out, Doubtful, Questionable)."""
-    injury_map = {}
-    if not sleeper_data:
-        return injury_map
-        
-    # Handle structured Sleeper cache schema: {"id_to_name": ..., "name_to_id": ..., "_raw": ...}
-    raw_players = sleeper_data.get("_raw", sleeper_data)
-    if not isinstance(raw_players, dict):
-        return injury_map
-
-    for p_id, p_info in raw_players.items():
-        if not isinstance(p_info, dict):
-            continue
-        name = p_info.get("full_name")
-        if not name:
-            fname = p_info.get("first_name", "")
-            lname = p_info.get("last_name", "")
-            name = f"{fname} {lname}".strip()
-            
-        if not name:
-            continue
-            
-        inj_status = p_info.get("injury_status")
-        status = p_info.get("status")
-        
-        norm_name = normalize_player_name(name).lower()
-        
-        if inj_status:
-            inj_upper = str(inj_status).upper()
-            if inj_upper in ["IR", "PUP", "OUT", "DOUBTFUL", "QUESTIONABLE", "SUS", "SUSPENDED", "DNR"]:
-                injury_map[norm_name] = "SUS" if inj_upper in ["SUS", "SUSPENDED"] else inj_upper
-        elif status:
-            st_upper = str(status).upper()
-            if st_upper in ["INJURED RESERVE", "IR"]:
-                injury_map[norm_name] = "IR"
-            elif st_upper in ["PHYSICALLY UNABLE TO PERFORM", "PUP"]:
-                injury_map[norm_name] = "PUP"
-            elif st_upper in ["NON FOOTBALL INJURY", "NFI"]:
-                injury_map[norm_name] = "IR"
-            elif st_upper in ["SUSPENDED", "SUS"]:
-                injury_map[norm_name] = "SUS"
-
-    # Propagate injury/suspension status to common player name aliases
-    aliases = {
-        "marquise brown": ["hollywood brown"],
-        "hollywood brown": ["marquise brown"],
-        "zonovan knight": ["bam knight"],
-        "bam knight": ["zonovan knight"],
-        "dj moore": ["d.j. moore"],
-        "d.j. moore": ["dj moore"],
-        "kenny gainwell": ["kenneth gainwell"],
-        "kenneth gainwell": ["kenny gainwell"],
-        "chig okonkwo": ["chigoziem okonkwo"],
-        "chigoziem okonkwo": ["chig okonkwo"],
-    }
-    for primary, alias_list in aliases.items():
-        if primary in injury_map:
-            for alias in alias_list:
-                injury_map[alias] = injury_map[primary]
-
-    return injury_map
 
 def update_csv_sources(injury_map: dict):
     """Updates CSV sources in data/sources/ with injury_status column."""

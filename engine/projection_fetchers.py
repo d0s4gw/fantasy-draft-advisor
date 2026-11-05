@@ -88,8 +88,22 @@ def _create_ssl_context() -> ssl.SSLContext:
             return ssl._create_unverified_context()
 
 
+PLAYER_NAME_ALIASES = {
+    "d.j. moore": "DJ Moore",
+    "dj moore": "DJ Moore",
+    "kenneth gainwell": "Kenny Gainwell",
+    "kenny gainwell": "Kenny Gainwell",
+    "chigoziem okonkwo": "Chig Okonkwo",
+    "chig okonkwo": "Chig Okonkwo",
+    "hollywood brown": "Marquise Brown",
+    "marquise brown": "Marquise Brown",
+    "bam knight": "Zonovan Knight",
+    "zonovan knight": "Zonovan Knight",
+}
+
+
 def normalize_player_name(name: str) -> str:
-    """Standardizes player names by stripping suffixes (Jr., III, II, Sr.) and trimming whitespace."""
+    """Standardizes player names by stripping suffixes (Jr., III, II, Sr.), trimming whitespace, and resolving common aliases."""
     if not name or pd.isna(name):
         return ""
     clean = str(name).strip()
@@ -97,7 +111,95 @@ def normalize_player_name(name: str) -> str:
     clean = re.sub(r'\s+\b(Jr|Sr|III|II|IV|V)\b\.?$', '', clean, flags=re.IGNORECASE)
     # Replace multiple spaces with a single space
     clean = re.sub(r'\s+', ' ', clean).strip()
-    return clean
+    return PLAYER_NAME_ALIASES.get(clean.lower(), clean)
+
+
+def extract_injury_map(sleeper_data: dict) -> dict:
+    """
+    Maps normalized player full_name to injury status (IR, PUP, OUT, DOUBTFUL, QUESTIONABLE, SUS).
+    Handles Sleeper 'Inactive' status with injury/surgery designations (e.g. Lamar Jackson, Jalen Hurts, Jaxson Dart)
+    as IR (0.0x) and filters out non-offensive duplicate player records.
+    """
+    injury_map = {}
+    if not sleeper_data:
+        return injury_map
+
+    raw_players = sleeper_data.get("_raw", sleeper_data)
+    if not isinstance(raw_players, dict):
+        return injury_map
+
+    for p_id, p_info in raw_players.items():
+        if not isinstance(p_info, dict):
+            continue
+
+        # Filter out defensive/special-teams players when position is specified to avoid duplicate name collisions
+        pos = p_info.get("position")
+        if pos and str(pos).upper() not in ["QB", "RB", "WR", "TE"]:
+            continue
+
+        name = p_info.get("full_name")
+        if not name:
+            fname = p_info.get("first_name", "")
+            lname = p_info.get("last_name", "")
+            name = f"{fname} {lname}".strip()
+
+        if not name:
+            continue
+
+        inj_status = p_info.get("injury_status")
+        status = p_info.get("status")
+        inj_notes = str(p_info.get("injury_notes") or "").upper().strip()
+        inj_body = p_info.get("injury_body_part")
+
+        norm_name = normalize_player_name(name).lower()
+        st_upper = str(status).upper().strip() if status else ""
+        inj_upper = str(inj_status).upper().strip() if inj_status else ""
+
+        mapped_status = None
+
+        # 1. Check for IR / PUP / Inactive-with-injury / Surgery / Unsigned FA first (0.0x full-quarter absence)
+        if st_upper in ["INJURED RESERVE", "IR", "NON FOOTBALL INJURY", "NFI"] or inj_upper in ["IR", "NFI", "DNR"]:
+            mapped_status = "IR"
+        elif st_upper in ["PHYSICALLY UNABLE TO PERFORM", "PUP"] or inj_upper == "PUP":
+            mapped_status = "PUP"
+        elif st_upper in ["SUSPENDED", "SUS"] or inj_upper in ["SUS", "SUSPENDED"]:
+            mapped_status = "SUS"
+        elif st_upper == "INACTIVE" and (inj_upper in ["OUT", "DOUBTFUL", "IR", "PUP"] or inj_body or "SURGERY" in inj_notes):
+            # Sleeper marks players deactivated for IR/surgery (e.g. Lamar Jackson thumb surgery, Tyler Huntley) as status=Inactive
+            mapped_status = "IR"
+        elif "SURGERY" in inj_notes and inj_upper:
+            mapped_status = "IR"
+        elif "team" in p_info and not p_info.get("team") and inj_upper:
+            # Unsigned free agents with injury tags (e.g. Joe Mixon, Tyreek Hill) are not active on an NFL roster
+            mapped_status = "IR"
+        elif inj_upper in ["OUT", "DOUBTFUL", "QUESTIONABLE"]:
+            mapped_status = inj_upper
+
+        if mapped_status:
+            # Do not overwrite a severe IR/PUP/SUS designation with a lesser one from a duplicate free-agent record
+            existing = injury_map.get(norm_name)
+            if existing in ["IR", "PUP", "SUS"] and mapped_status not in ["IR", "PUP", "SUS"]:
+                continue
+            injury_map[norm_name] = mapped_status
+
+    aliases = {
+        "marquise brown": ["hollywood brown"],
+        "hollywood brown": ["marquise brown"],
+        "zonovan knight": ["bam knight"],
+        "bam knight": ["zonovan knight"],
+        "dj moore": ["d.j. moore"],
+        "d.j. moore": ["dj moore"],
+        "kenny gainwell": ["kenneth gainwell"],
+        "kenneth gainwell": ["kenny gainwell"],
+        "chig okonkwo": ["chigoziem okonkwo"],
+        "chigoziem okonkwo": ["chig okonkwo"],
+    }
+    for primary, alias_list in aliases.items():
+        if primary in injury_map:
+            for alias in alias_list:
+                injury_map[alias] = injury_map[primary]
+
+    return injury_map
 
 
 class DataSanityGuard:
@@ -189,6 +291,11 @@ class DownloadsWatcherFetcher(BaseFetcher):
                 continue
 
             filepath = matches[0]
+            # Ignore stale Downloads exports older than 14 days (e.g. preseason September CSVs)
+            age_days = (time.time() - os.path.getmtime(filepath)) / 86400.0
+            if age_days > 14.0:
+                logger.info(f"Skipping stale Downloads CSV '{os.path.basename(filepath)}' ({age_days:.1f} days old > 14d limit)")
+                continue
             filename = os.path.basename(filepath)
             self.read_files.append((pos, filename, filepath))
 
@@ -494,6 +601,10 @@ class FantasyProsWebFetcher(BaseFetcher):
                 continue
 
         if not all_dfs:
+            # Fallback to live Sleeper/RotoWire target-quarter weekly projections API
+            rw_df = self._fetch_sleeper_rotowire_weekly_projections()
+            if rw_df is not None and not rw_df.empty:
+                return rw_df, self.scraped_urls
             return None, self.scraped_urls
 
         combined = pd.concat(all_dfs, ignore_index=True)
@@ -505,6 +616,137 @@ class FantasyProsWebFetcher(BaseFetcher):
         combined["adp"] = range(1, len(combined) + 1)
         combined["bye_week"] = 0
         return combined, self.scraped_urls
+
+    def _fetch_sleeper_rotowire_weekly_projections(self) -> Optional[pd.DataFrame]:
+        """
+        Fetches live weekly projections from Sleeper/RotoWire projections API across
+        the configured target quarter weeks (e.g. Q3 Weeks 9-12) and converts them into
+        standardized 4-week pace projection rows.
+        """
+        cfg_path = os.path.join(self.data_dir, "config.json")
+        target_weeks = [9, 10, 11, 12]
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r") as f:
+                    target_weeks = json.load(f).get("weeks", [9, 10, 11, 12])
+            except Exception:
+                pass
+
+        bye_path = os.path.join(self.data_dir, "bye_weeks.json")
+        bye_map = {}
+        if os.path.exists(bye_path):
+            try:
+                with open(bye_path, "r") as f:
+                    raw_bye = json.load(f)
+                bye_map = {k: int(v) for k, v in raw_bye.items() if not k.startswith("_")}
+                for a, c in raw_bye.get("_aliases", {}).items():
+                    if c in bye_map:
+                        bye_map[a] = bye_map[c]
+            except Exception:
+                pass
+
+        players: Dict[str, dict] = {}
+        for wk in target_weeks:
+            url = (
+                f"https://api.sleeper.com/projections/nfl/2026/{wk}"
+                f"?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE"
+            )
+            self.scraped_urls.append((f"W{wk}", url))
+            try:
+                req = urllib.request.Request(url, headers=self.headers)
+                with urllib.request.urlopen(req, context=self.context, timeout=7) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = json.loads(resp.read().decode("utf-8"))
+                    for p in data:
+                        pl = p.get("player") or {}
+                        pos = pl.get("position")
+                        if pos not in ["QB", "RB", "WR", "TE"]:
+                            continue
+                        raw_name = f"{pl.get('first_name', '')} {pl.get('last_name', '')}".strip()
+                        name = normalize_player_name(raw_name)
+                        raw_team = (p.get("team") or pl.get("team") or "FA").upper().strip()
+                        team = TEAM_ABBR_CANONICAL.get(raw_team, raw_team)
+                        if not name or team == "FA":
+                            continue
+
+                        st = p.get("stats") or {}
+                        p_yd = float(st.get("pass_yd", 0.0))
+                        p_td = float(st.get("pass_td", 0.0))
+                        p_int = float(st.get("pass_int", 0.0))
+                        r_yd = float(st.get("rush_yd", 0.0))
+                        r_td = float(st.get("rush_td", 0.0))
+                        rec = float(st.get("rec", 0.0))
+                        rc_yd = float(st.get("rec_yd", 0.0))
+                        rc_td = float(st.get("rec_td", 0.0))
+                        two_pt = float(st.get("pass_2pt", 0.0) + st.get("rush_2pt", 0.0) + st.get("rec_2pt", 0.0))
+
+                        has_proj = (p_yd + r_yd + rc_yd + rec + p_td + r_td + rc_td) > 0.0
+                        key = f"{name.lower()}_{pos}_{team}"
+                        if key not in players:
+                            players[key] = {
+                                "name": name,
+                                "position": pos,
+                                "team": team,
+                                "inj_status": str(pl.get("injury_status") or "").upper().strip(),
+                                "active_wks": 0,
+                                "pass_yds": 0.0, "pass_tds": 0.0, "pass_ints": 0.0,
+                                "rush_yds": 0.0, "rush_tds": 0.0,
+                                "receptions": 0.0, "rec_yds": 0.0, "rec_tds": 0.0,
+                                "two_pts": 0.0,
+                            }
+                        rec_p = players[key]
+                        if has_proj:
+                            rec_p["active_wks"] += 1
+                            rec_p["pass_yds"] += p_yd
+                            rec_p["pass_tds"] += p_td
+                            rec_p["pass_ints"] += p_int
+                            rec_p["rush_yds"] += r_yd
+                            rec_p["rush_tds"] += r_td
+                            rec_p["receptions"] += rec
+                            rec_p["rec_yds"] += rc_yd
+                            rec_p["rec_tds"] += rc_td
+                            rec_p["two_pts"] += two_pt
+            except Exception as e:
+                logger.warning(f"Sleeper/RotoWire W{wk} projection fetch failed: {e}")
+
+        rows = []
+        for rec_p in players.values():
+            if rec_p["active_wks"] == 0:
+                continue
+            team = rec_p["team"]
+            b_wk = bye_map.get(team, 0)
+            non_bye_cnt = sum(1 for w in target_weeks if w != b_wk)
+            inj = rec_p["inj_status"]
+            # ProjectionSynthesizer applies bye_week scaling (non_bye_cnt / 4) and injury_multiplier
+            # (0.75 for QUESTIONABLE/OUT). Convert weekly sum to 4-game healthy baseline so neither is double-discounted.
+            if inj in ["OUT", "DOUBTFUL"] and rec_p["active_wks"] > 0:
+                scale = float(NUM_Q_WEEKS) / float(rec_p["active_wks"])
+            elif non_bye_cnt > 0:
+                scale = float(NUM_Q_WEEKS) / float(non_bye_cnt)
+            else:
+                scale = 1.0
+
+            row = {
+                "name": rec_p["name"],
+                "position": rec_p["position"],
+                "team": team,
+                "bye_week": b_wk,
+                "two_pts": round(rec_p["two_pts"] * scale, 1),
+            }
+            for col in ["pass_yds", "pass_tds", "pass_ints", "rush_yds", "rush_tds", "receptions", "rec_yds", "rec_tds"]:
+                row[col] = round(rec_p[col] * scale, 1)
+            rows.append(row)
+
+        if not rows:
+            return None
+
+        res_df = pd.DataFrame(rows)
+        res_df["_sort_val"] = res_df["pass_yds"] * 0.16 + res_df["rush_yds"] * 0.8 + res_df["rec_yds"] * 0.8
+        res_df = res_df.sort_values(by="_sort_val", ascending=False).reset_index(drop=True)
+        res_df["adp"] = range(1, len(res_df) + 1)
+        res_df = res_df.drop(columns=["_sort_val"])
+        return res_df
 
 class FFTodayWebFetcher(BaseFetcher):
     """
@@ -814,25 +1056,30 @@ class SleeperStatsFetcher(BaseFetcher):
                     ps["two_pts"] += float(s.get("pass_2pt", 0.0) + s.get("rush_2pt", 0.0) + s.get("rec_2pt", 0.0))
 
         rows = []
+        num_comp_weeks = len(completed_weeks)
         for pid, ps in player_stats.items():
             if ps["gp"] == 0:
                 continue
             gp = ps["gp"]
-            team_val = ps["team"]
-            b_wk = bye_map.get(team_val, bye_map.get(TEAM_ABBR_CANONICAL.get(team_val, team_val), 0))
+            team_val = TEAM_ABBR_CANONICAL.get(ps["team"], ps["team"])
+            b_wk = bye_map.get(team_val, 0)
+            # For mid-season YTD (6+ weeks played), prevent 1-2 game backup spot-starters
+            # (e.g. Jacoby Brissett, Marcus Mariota, Carson Wentz) from being extrapolated as 4-game starters
+            team_games_played = sum(1 for w in completed_weeks if w != b_wk)
+            denom_gp = gp if gp >= max(3, team_games_played // 2) else max(gp, team_games_played)
             rows.append({
                 "name": ps["name"],
                 "position": ps["position"],
                 "team": team_val,
-                "pass_yds": round(ps["pass_yds"] / gp * NUM_Q_WEEKS, 1),
-                "pass_tds": round(ps["pass_tds"] / gp * NUM_Q_WEEKS, 1),
-                "pass_ints": round(ps["pass_ints"] / gp * NUM_Q_WEEKS, 1),
-                "rush_yds": round(ps["rush_yds"] / gp * NUM_Q_WEEKS, 1),
-                "rush_tds": round(ps["rush_tds"] / gp * NUM_Q_WEEKS, 1),
-                "receptions": round(ps["receptions"] / gp * NUM_Q_WEEKS, 1),
-                "rec_yds": round(ps["rec_yds"] / gp * NUM_Q_WEEKS, 1),
-                "rec_tds": round(ps["rec_tds"] / gp * NUM_Q_WEEKS, 1),
-                "two_pts": round(ps["two_pts"] / gp * NUM_Q_WEEKS, 1),
+                "pass_yds": round(ps["pass_yds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "pass_tds": round(ps["pass_tds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "pass_ints": round(ps["pass_ints"] / denom_gp * NUM_Q_WEEKS, 1),
+                "rush_yds": round(ps["rush_yds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "rush_tds": round(ps["rush_tds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "receptions": round(ps["receptions"] / denom_gp * NUM_Q_WEEKS, 1),
+                "rec_yds": round(ps["rec_yds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "rec_tds": round(ps["rec_tds"] / denom_gp * NUM_Q_WEEKS, 1),
+                "two_pts": round(ps["two_pts"] / denom_gp * NUM_Q_WEEKS, 1),
                 "adp": 999.0,
                 "bye_week": b_wk
             })
@@ -975,7 +1222,23 @@ class FetcherManager:
                 except Exception as e:
                     logger.warning(f"Failed to read cached sleeper_ytd.csv: {e}")
 
-        # Step 4: Console Summary Matrix Log
+        # Step 4: Stamp live Sleeper injury_status onto all CSV sources & print summary
+        if sleeper_data:
+            inj_map = extract_injury_map(sleeper_data)
+            if inj_map and os.path.exists(self.sources_dir):
+                for fname in os.listdir(self.sources_dir):
+                    if fname.endswith(".csv"):
+                        fpath = os.path.join(self.sources_dir, fname)
+                        try:
+                            df_src = pd.read_csv(fpath)
+                            if "name" in df_src.columns:
+                                df_src["injury_status"] = df_src["name"].apply(
+                                    lambda n: inj_map.get(normalize_player_name(str(n)).lower(), "HEALTHY")
+                                )
+                                df_src.to_csv(fpath, index=False)
+                        except Exception as e:
+                            logger.warning(f"Could not stamp injury_status on {fname}: {e}")
+
         print("[4/4] 🔄 Live projection sources updated & ready for synthesizer!")
         print("\n" + "=" * 75)
         print("📊 LIVE MULTI-SOURCE DATA COLLECTION & INGESTION REPORT")
@@ -1026,29 +1289,15 @@ class FetcherManager:
         fft_result = {"df": None, "urls": [], "valid": False}
 
         def _run_fantasypros():
-            # Check for official API key first
-            api_key = os.environ.get("FANTASYPROS_API_KEY", "").strip()
-            if api_key:
-                api_fetcher = FantasyProsAPIFetcher(self.data_dir, api_key=api_key)
-                df_api, endpoints = api_fetcher.fetch()
-                valid_api, msg = DataSanityGuard.validate(df_api, "FantasyPros Official API", min_players=20)
-                if valid_api:
-                    fp_result["df"] = df_api
-                    fp_result["urls"] = endpoints
-                    fp_result["valid"] = True
-                    fp_result["published_date"] = api_fetcher.published_date
-                    fp_result["source_label"] = "Official REST API"
-                    return
-
-            # Fallback to web scraper
+            # Use FantasyProsWebFetcher (with live 2026 Sleeper/RotoWire Q3 weekly projections fallback)
             fp_fetcher = FantasyProsWebFetcher(self.data_dir)
             df_fp, urls_fp = fp_fetcher.fetch()
-            valid_fp, msg = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=20)
+            valid_fp, msg = DataSanityGuard.validate(df_fp, "FantasyPros Web", min_players=50)
             fp_result["df"] = df_fp
             fp_result["urls"] = urls_fp
             fp_result["valid"] = valid_fp
             fp_result["published_date"] = fp_fetcher.published_date
-            fp_result["source_label"] = "Live Web Scraper"
+            fp_result["source_label"] = "Live Q3 Weekly Projections"
             if not valid_fp:
                 logger.info(f"FantasyPros web scraper: {msg}")
 

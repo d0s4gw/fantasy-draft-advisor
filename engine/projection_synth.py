@@ -10,7 +10,7 @@ import json
 from typing import Optional, Dict, Any, List, Set
 import pandas as pd
 from engine.scoring import calculate_ufl_points
-from engine.projection_fetchers import normalize_player_name, FetcherManager, enrich_bye_weeks
+from engine.projection_fetchers import normalize_player_name, FetcherManager, enrich_bye_weeks, extract_injury_map, TEAM_ABBR_CANONICAL
 
 class ProjectionSynthesizer:
     # Default scoring coefficients (fallback if config.json missing)
@@ -75,7 +75,17 @@ class ProjectionSynthesizer:
         else:
             bye_file = "bye_weeks.json"
 
-        # Load bye weeks schedule
+        # Load live Sleeper injury map directly from sleeper_players.json so synthesis
+        # never misses injuries even if a raw CSV source was written without injury_status
+        self.sleeper_injury_map = {}
+        sleeper_path = os.path.join(self.data_dir, "sleeper_players.json")
+        if os.path.exists(sleeper_path):
+            try:
+                with open(sleeper_path, "r") as f:
+                    self.sleeper_injury_map = extract_injury_map(json.load(f))
+            except Exception as e:
+                print(f"⚠️  WARNING: Could not load sleeper_players.json for injuries: {e}")
+            # Load bye weeks schedule
         self.bye_weeks_map = {}
         bye_path = os.path.join(self.data_dir, bye_file)
         if os.path.exists(bye_path):
@@ -125,6 +135,7 @@ class ProjectionSynthesizer:
                     continue
                     
                 df["name"] = df["name"].apply(normalize_player_name)
+                df["team"] = df["team"].apply(lambda t: TEAM_ABBR_CANONICAL.get(str(t).upper().strip(), str(t).upper().strip()))
                 df["source_weight"] = float(source.get("weight", 1.0))
                 dfs.append(df)
             except Exception as e:
@@ -135,6 +146,17 @@ class ProjectionSynthesizer:
 
         # Combine sources
         combined = pd.concat(dfs, ignore_index=True)
+
+        # Identify active forward-projected player set when primary projection source has full league coverage (>=200 players)
+        fp_active_names: Set[str] = set()
+        fp_path = os.path.join(self.sources_dir, "fantasypros.csv")
+        if os.path.exists(fp_path):
+            try:
+                df_fp_check = pd.read_csv(fp_path)
+                if len(df_fp_check) >= 200 and "name" in df_fp_check.columns:
+                    fp_active_names = set(df_fp_check["name"].apply(normalize_player_name).str.lower())
+            except Exception:
+                pass
 
         # Stat fields to aggregate
         stat_cols = [
@@ -182,13 +204,19 @@ class ProjectionSynthesizer:
                 weighted_val = (group[col] * group["source_weight"]).sum() / total_weight if total_weight > 0 else 0.0
                 row[col] = round(weighted_val, 1)
 
-            # Check injury status from group or overrides
-            inj_status = "HEALTHY"
+            # Check injury status from Sleeper injury map, CSV group, or manual overrides
+            inj_status = self.sleeper_injury_map.get(name.lower(), "HEALTHY")
             inj_mult = 1.0
             missed_weeks = set()
             
-            if "injury_status" in group.columns and pd.notnull(group["injury_status"].iloc[0]):
-                inj_status = str(group["injury_status"].iloc[0]).upper().strip()
+            if inj_status == "HEALTHY" and "injury_status" in group.columns:
+                non_null_inj = [
+                    str(v).upper().strip()
+                    for v in group["injury_status"].dropna().tolist()
+                    if str(v).upper().strip() not in ["", "HEALTHY", "NAN", "NONE"]
+                ]
+                if non_null_inj:
+                    inj_status = non_null_inj[0]
 
             player_override = self.overrides.get("players", {}).get(name, {})
             if "status" in player_override:
@@ -237,6 +265,13 @@ class ProjectionSynthesizer:
             if "injury_multiplier" in player_override:
                 inj_mult = float(player_override["injury_multiplier"])
 
+            # If full forward Q3 projections are available and player is not projected for any snaps in Q3
+            # (e.g. benched backup QBs like Jacoby Brissett, Marcus Mariota, Jameis Winston, Carson Wentz, or unsigned FAs),
+            # zero out forward stats unless explicitly overridden in overrides.json
+            if fp_active_names and name.lower() not in fp_active_names and name not in self.overrides.get("players", {}):
+                inj_mult = 0.0
+                if inj_status == "HEALTHY":
+                    inj_status = "BENCH / INACTIVE"
             # Apply injury multiplier to stats (single discount point)
             if inj_mult == 0.0:
                 for col in stat_cols:
