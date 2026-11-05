@@ -243,17 +243,20 @@ class JointOptimizer:
                 p_copy = dict(p)
                 p_team = p_copy.get("team", "")
                 player_bye = target_bye_map.get(p_team, 0)
-                if projections_df is not None:
+                week_col = f"ufl_pts_w{week}"
+                if week_col in p_copy:
+                    p_copy["ufl_pts"] = float(p_copy[week_col])
+                elif projections_df is not None:
                     p_name = p_copy.get("name") or p_copy.get("player_name") or ""
                     match = projections_df[projections_df["name"] == p_name]
                     if not match.empty:
-                        week_col = f"ufl_pts_w{week}"
                         if week_col in match.columns:
                             p_copy["ufl_pts"] = float(match.iloc[0][week_col])
                         elif player_bye == week:
                             p_copy["ufl_pts"] = 0.0
                         else:
-                            p_copy["ufl_pts"] = round(float(match.iloc[0]["ufl_pts"]) / len(target_weeks), 2)
+                            num_act = max(1, sum(1 for w in target_weeks if w != player_bye))
+                            p_copy["ufl_pts"] = round(float(match.iloc[0]["ufl_pts"]) / num_act, 2)
                     else:
                         if player_bye == week:
                             p_copy["ufl_pts"] = 0.0
@@ -263,6 +266,10 @@ class JointOptimizer:
                 else:
                     if player_bye == week:
                         p_copy["ufl_pts"] = 0.0
+                    elif "pick_no" in p_copy or p_copy.get("_bye_adjusted"):
+                        num_act = max(1, sum(1 for w in target_weeks if w != player_bye))
+                        total_pts = p_copy.get("ufl_pts", 0.0)
+                        p_copy["ufl_pts"] = round(total_pts / num_act, 2)
                     else:
                         total_pts = p_copy.get("ufl_pts", 0.0)
                         p_copy["ufl_pts"] = round(total_pts / len(target_weeks), 2)
@@ -359,25 +366,26 @@ class JointOptimizer:
         flex_base = round(sum(flex_candidates) / len(flex_candidates), 1) if flex_candidates else 70.0
 
         def _project_full_7_starters(roster_list: List[Dict]) -> List[Dict]:
-            """Projects a full 7-starter lineup (2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX) using future baselines."""
+            """Projects a full 7-starter lineup (2 QB, 1 RB, 1 WR, 1 TE, 2 FLEX) plus bye-week bench backups using future baselines."""
             projected = list(roster_list)
             qbs = len([p for p in roster_list if p["position"] == "QB"])
             rbs = len([p for p in roster_list if p["position"] == "RB"])
             wrs = len([p for p in roster_list if p["position"] == "WR"])
             tes = len([p for p in roster_list if p["position"] == "TE"])
 
+            qb_b = pos_future_baselines.get("QB", 75.0)
+            rb_b = pos_future_baselines.get("RB", 105.0)
+            wr_b = pos_future_baselines.get("WR", 90.0)
+            te_b = pos_future_baselines.get("TE", 60.0)
+
             if qbs < 2:
-                qb_b = pos_future_baselines.get("QB", 75.0)
                 for _ in range(2 - qbs):
                     projected.append({"position": "QB", "ufl_pts": qb_b})
             if rbs < 1:
-                rb_b = pos_future_baselines.get("RB", 105.0)
                 projected.append({"position": "RB", "ufl_pts": rb_b})
             if wrs < 1:
-                wr_b = pos_future_baselines.get("WR", 90.0)
                 projected.append({"position": "WR", "ufl_pts": wr_b})
             if tes < 1:
-                te_b = pos_future_baselines.get("TE", 60.0)
                 projected.append({"position": "TE", "ufl_pts": te_b})
 
             # Calculate remaining flex starters needed (7 starters total - 2 QB - 1 RB - 1 WR - 1 TE = 2 FLEX)
@@ -386,16 +394,30 @@ class JointOptimizer:
             for _ in range(flex_needed):
                 projected.append({"position": "WR", "ufl_pts": flex_base})
 
+            # Include realistic bench bye-week fill-ins (0.75x future baseline) so starters with a 1-week Q3 bye
+            # receive bench replacement points during their bye week rather than an empty 0.0 slot
+            if qbs < 3:
+                projected.append({"position": "QB", "ufl_pts": round(qb_b * 0.75, 1)})
+            if tes < 2:
+                projected.append({"position": "TE", "ufl_pts": round(te_b * 0.75, 1)})
+            if extra_flex < 4:
+                projected.append({"position": "RB", "ufl_pts": round(flex_base * 0.75, 1)})
+                projected.append({"position": "WR", "ufl_pts": round(flex_base * 0.75, 1)})
+
             return projected
 
         # Calculate base portfolio score with 7 starters filled — using 4-week bye-aware solver
         base_projected_full = _project_full_7_starters(current_roster)
         base_portfolio_score = self.solve_4_week_portfolio(base_projected_full)
 
-        candidates = undrafted_df.head(min(len(undrafted_df), 60)).copy()
+        active_undrafted = undrafted_df[undrafted_df["ufl_pts"] > 0.0].copy()
+        if active_undrafted.empty:
+            active_undrafted = undrafted_df.copy()
+
+        candidates = active_undrafted.head(min(len(active_undrafted), 60)).copy()
         pos_candidates = []
         for p_pos in ["QB", "RB", "WR", "TE"]:
-            pos_candidates.append(undrafted_df[undrafted_df["position"] == p_pos].head(10))
+            pos_candidates.append(active_undrafted[active_undrafted["position"] == p_pos].head(10))
         candidates = pd.concat(pos_candidates + [candidates]).drop_duplicates(subset=["name"]).copy()
 
         marginal_gains = []
@@ -408,8 +430,13 @@ class JointOptimizer:
                 "name": row["name"],
                 "position": pos,
                 "team": row["team"],
-                "ufl_pts": row["ufl_pts"]
+                "ufl_pts": row["ufl_pts"],
+                "_bye_adjusted": True
             }
+            for w in self.weeks:
+                w_col = f"ufl_pts_w{w}"
+                if w_col in row:
+                    player_dict[w_col] = float(row[w_col])
             
             # Check feasibility constraints & positional roster caps
             max_caps = {"QB": 3, "RB": 5, "WR": 5, "TE": 2}
@@ -430,7 +457,11 @@ class JointOptimizer:
                 (pos == "WR" and req_wrs_full > 0)
             )
 
-            if exceeds_cap:
+            if row.get("ufl_pts", 0.0) <= 0.0:
+                gain = -999.0
+                sim_score = base_portfolio_score
+                status = "REJECTED (INJURED / INACTIVE)"
+            elif exceeds_cap:
                 gain = -999.0
                 sim_score = base_portfolio_score
                 status = f"REJECTED (MAX {pos} ROSTER CAP REACHED)"

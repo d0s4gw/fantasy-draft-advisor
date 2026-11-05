@@ -515,6 +515,7 @@ def test_mock_draft_roster_compliance():
     vorp_calc = VORPCalculator(ds.roster_limits)
 
     # Execute full 72-pick mock draft
+    ir_banned = {"jalen hurts", "lamar jackson", "jaxson dart"}
     for pick_no in range(1, 73):
         curr = ds.current_pick_info()
         if not curr:
@@ -523,10 +524,20 @@ def test_mock_draft_roster_compliance():
         v_df = vorp_calc.compute_vorp(df, ds, governor=gov)
         if v_df.empty:
             break
+        rec_names = set(v_df["name"].str.lower().tolist())
+        overlap = ir_banned.intersection(rec_names)
+        assert not overlap, f"IR player(s) {overlap} should never appear in VORP recommendations at pick #{pick_no}"
         top = v_df.iloc[0]
         ds.record_pick(top["name"], top["position"], top["team"], top["ufl_pts"], governor=gov)
 
     assert len(ds.picks_history) == 72, f"Mock draft should complete all 72 picks, got {len(ds.picks_history)}"
+    drafted_lower = {p["player_name"].lower(): p for p in ds.picks_history}
+    for banned in ir_banned:
+        assert banned not in drafted_lower, f"IR player {banned} must never be drafted in simulation"
+    assert "jaxon smith-njigba" in drafted_lower, "Jaxon Smith-Njigba must be drafted"
+    assert drafted_lower["jaxon smith-njigba"]["round"] == 1, (
+        f"Jaxon Smith-Njigba should be a Round 1 pick, got Round {drafted_lower['jaxon smith-njigba']['round']}"
+    )
 
     # Verify every governor meets minimum roster requirements (no-waiver league)
     req = {"QB": 3, "RB": 3, "WR": 3, "TE": 2}

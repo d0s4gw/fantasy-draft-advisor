@@ -63,7 +63,7 @@ def run_simulation():
     standings = []
     for gov in draft_state.governors:
         r_list = draft_state.rosters.get(gov, [])
-        starter_pts = standings_optimizer.solve_weekly_starting_lineup(r_list)
+        starter_pts = standings_optimizer.solve_4_week_portfolio(r_list, projections_df=projections_df)
         total_pts = sum(p["ufl_pts"] for p in r_list)
         pos_counts = draft_state.get_governor_roster_breakdown(gov)
         standings.append({
@@ -83,6 +83,7 @@ def run_simulation():
     my_roster = draft_state.rosters.get(draft_state.my_team, [])
     my_df = pd.DataFrame(my_roster)[["pick_no", "round", "player_name", "position", "team", "ufl_pts"]]
     print(my_df.to_string(index=False))
+    draft_state.reset_draft()
 
 if __name__ == "__main__":
     run_simulation()
