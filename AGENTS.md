@@ -23,7 +23,7 @@ This project is a high-speed Python + Streamlit application engineered to optimi
   > to git-tracked files.
 
 - **Draft Format**: 12-Round Snake Draft (72 total picks).
-- **Target Focus**: **Q3 (Weeks 9–12)** performance with automatic 2026 NFL bye week substitutions.
+- **Target Focus**: **Q4 (Weeks 13–16)** performance with automatic 2026 NFL bye week substitutions (6 bye teams: W13 `BAL/IND/LV/NYJ`, W14 `ARI/DAL`; 0 byes in W15–16).
 - **Canonical Rules**: See [LEAGUE_RULES.md](data/LEAGUE_RULES.md) — the single source of truth for all league rules.
 - **Custom UFL Yardage Multiplier**:
   - **Rushing & Receiving**: **1 pt per 5 yards** ($0.20\text{ pts/yd}$) — **2x standard fantasy scoring**.
@@ -46,7 +46,7 @@ fantasy-draft-advisor/
 ├── CLAUDE.md                         # Symlink / concise reference for Claude Code & Cursor
 ├── .cursorrules                      # Workspace instructions for Cursor IDE
 ├── README.md                         # Quick start documentation for human users
-├── ROADMAP.md                        # Feature roadmap & deferred per-week projections plan
+├── ROADMAP.md                        # Feature roadmap & completed Q4 upgrade history
 ├── app.py                            # Primary Streamlit web application dashboard UI
 ├── import_fantasypros.py             # FantasyPros CSV projection converter & dataset builder
 ├── refresh_draft_data.py             # Live Sleeper injury tracker & source status updater (supports --offline)
@@ -122,13 +122,13 @@ fantasy-draft-advisor/
 - **Name Suffix Normalization (`normalize_player_name`)**: Standardizes suffixes (`Jr.`, `III`, `II`, `Sr.`) for clean cross-source player matching.
 - Normalizes column names and applies custom UFL scoring formula:
   $$\text{UFL Pts} = (\text{RushYds} + \text{RecYds}) \times 0.20 + (\text{RushTD} + \text{RecTD}) \times 6.0 + \text{PassYds} \times 0.04 + \text{PassTD} \times 4.0 - \text{INT} \times 2.0 + \text{Rec} \times 0.3 + \text{2PtConv} \times 2.0$$
-- **Injury Discount Model**: Injury multiplier is applied to raw stats once (not to the final score). Games-based return discount scale for Q3 (4-week window): 3 games = 0.75×, 2 games = 0.50×, 1 game = 0.25×, 0 games = 0.0×. By default, IR/PUP/SUS = 0.0×, single-game OUT = 0.75× (misses earliest week), QUESTIONABLE = 0.75×. Overrides in `data/overrides.json` support `expected_games`, `return_week`, and `touch_multiplier` with automatic zeroing of missed weeks in weekly columns.
+- **Injury Discount Model**: Injury multiplier is applied to raw stats once (not to the final score). Games-based return discount scale for Q4 (4-week window): 3 games = 0.75×, 2 games = 0.50×, 1 game = 0.25×, 0 games = 0.0×. By default, IR/PUP/SUS = 0.0×, DOUBTFUL = 0.50× (misses earliest week), single-game OUT = 0.75× (misses earliest week), QUESTIONABLE = 0.90×. Overrides in `data/overrides.json` (also editable in-app via the sidebar **🩹 Player overrides** popover) support `expected_games`, `return_week`, `status`, and `touch_multiplier` with automatic zeroing of missed weeks in weekly columns.
 
 ### C. Joint Portfolio Optimizer & VORP (`engine/joint_optimizer.py`, `engine/vorp_calculator.py`)
 - Computes exact **Marginal Portfolio Gain** for every available player using 4-week Knapsack solver.
 - Evaluates candidate picks against the user's current roster rather than static baseline replacements.
 - **Refreshed Projections**: `get_optimal_lineup_details()` and `solve_weekly_starting_lineup()` accept optional `projections_df` to use current projection values rather than stale pick-time snapshots.
-- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs remain $\le 3$ and user has $< 2$ QBs before an extended pick wait, calibrated for Q3 bye weeks.
+- Evaluates **QB Supply Squeeze**: Flags warnings when top-tier QBs remain $\le 3$ and user has $< 2$ QBs before an extended pick wait, calibrated for Q4 bye weeks.
 
 ### D. Recommendation & Turn Strategy Engine (`engine/live_math_engine.py`, `engine/joint_optimizer.py`)
 - **Live Math Engine (`LiveMathEngine`)**: Real-time sub-millisecond Knapsack VORP, starter standings, and opponent scarcity optimizer.

@@ -14,12 +14,9 @@ These guidelines apply specifically to AI coding agents operating in this worksp
    - On draft reset, only delete draft-related session state keys (`draft_state`, `synth`, `sleeper_sync`), not all session state.
    - For UI changes, verify using `streamlit run app.py` or inspect layout structure.
 
-3. **Multi-Engine Consistency**:
-   - Maintain the `BaseEngine` interface (`engine/base_engine.py`) across all engines:
-     - `PrecomputedEngine`
-     - `LiveMathEngine`
-     - `LiveAIEngine`
-   - Ensure all engines return valid `EngineRecommendation` objects containing `top_pick`, `recommended_players`, and `reasoning`.
+3. **Engine Interface Consistency**:
+   - Maintain the `DraftEngineBase` interface (`engine/base_engine.py`) across recommendation engines (`LiveMathEngine`).
+   - Ensure `recommend()` returns a valid standardized recommendation dict containing `best_decision`, `top_qbs`, `top_rbs`, `top_wrs`, `top_tes`, and `advice_text`.
 
 4. **Injury Discount Model**:
    - Apply injury multiplier to **stats** (single discount point), NOT to the final UFL score.

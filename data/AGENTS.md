@@ -12,7 +12,8 @@ The `data/` directory houses configuration settings, draft state tracking persis
 | [config.json](config.json) | League configuration, Governors, roster limits, GCP settings | Static / Config | `DraftState`, `app.py` |
 | [config.local.json](config.local.json) | Local overrides (real governor names, team name). Not committed. | Static / Config | `DraftState`, `app.py` |
 | [draft_state.json](draft_state.json) | Live pick history, current pick tracker, governor roster state | Dynamic (Auto-saved) | `DraftState` |
-| [precomputed_gameplan.json](precomputed_gameplan.json) | Tactical scouting notes & round-by-round target strategies | Static (Precomputed) | `PrecomputedEngine` |
+| [bye_weeks.json](bye_weeks.json) | Canonical 2026 NFL bye week schedule for all 32 teams + aliases | Static / Config | `ProjectionSynthesizer`, `JointOptimizer`, `DraftState` |
+| [overrides.json](overrides.json) | Manual player injury/usage overrides (editable in-app via sidebar) | Dynamic / Config | `ProjectionSynthesizer`, `ui/sidebar.py` |
 | [sources.json](sources.json) | Projection source weighting & CSV filenames mapping | Config | `ProjectionSynthesizer` |
 | [sleeper_players.json](sleeper_players.json) | Sleeper player ID mapping (structured format: `id_to_name`, `name_to_id`) | Static / Cached | `SleeperSync`, `SleeperAPIFetcher` |
 | [sources/](sources/) | Directory containing raw CSV files from projection providers | Data Inputs | `ProjectionSynthesizer` |
@@ -27,8 +28,8 @@ The `data/` directory houses configuration settings, draft state tracking persis
   "league_name": "UFL Fantasy Football",
   "num_teams": 6,
   "num_rounds": 12,
-  "target_quarter": "Q3",
-  "weeks": [9, 10, 11, 12],
+  "target_quarter": "Q4",
+  "weeks": [13, 14, 15, 16],
   "my_team_name": "Team 1 (User)",
   "governors": [
     "Team 1 (User)",
@@ -169,5 +170,5 @@ Both `SleeperAPIFetcher` and `SleeperSync` use a structured format:
 
 1. **Resetting Draft State**: To reset the draft state, empty `picks_history` in `data/draft_state.json` to `[]` or click **🚨 Reset Draft** in the sidebar.
 2. **Adding New Sources**: Drop the new CSV into `data/sources/` and append an entry in `data/sources.json`. Missing enabled sources will log a `⚠️ WARNING` at runtime.
-3. **Precomputing**: Run `python precompute_gameplan.py` to regenerate scouting notes in `data/precomputed_gameplan.json`.
-4. **Draft Order**: Update `governors` array in `config.json` (and `config.local.json`) once the actual draft order is determined.
+3. **Player Overrides**: Edit `data/overrides.json` directly or use the in-app **🩹 Player overrides** popover in the sidebar.
+4. **Draft Order**: Update `governors` in `data/config.local.json` directly or use the in-app **📋 Draft order** popover in the sidebar once the Q4 draft order is drawn.
