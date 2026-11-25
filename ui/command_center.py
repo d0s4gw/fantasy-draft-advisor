@@ -77,6 +77,7 @@ def render_command_center(
                 p_info = projections_df[projections_df["name"] == best_candidate['name']].iloc[0]
                 draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=on_clock_gov)
                 st.session_state.skipped_this_pick.clear()
+                st.session_state.pop("war_room_cache", None)
                 st.toast(f"Slammed {best_candidate['name']} to {on_clock_gov}!")
                 st.rerun()
 
@@ -274,6 +275,7 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             if st.button(f"Draft {p['position']}", key=f"draft_btn_{title}_{p_name}", width="stretch"):
                 p_info = projections_df[projections_df["name"] == p_name].iloc[0]
                 draft_state.record_pick(p_info["name"], p_info["position"], p_info["team"], p_info["ufl_pts"], governor=on_clock_gov)
+                st.session_state.pop("war_room_cache", None)
                 st.toast(f"Drafted {p_name} to {on_clock_gov}!")
                 st.rerun()
             st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)

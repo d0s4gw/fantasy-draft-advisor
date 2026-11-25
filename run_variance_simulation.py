@@ -68,11 +68,11 @@ def run_stochastic_mock(projections_df, user_team: str = None, user_strategy: st
 
             draft_state.record_pick(top_p["name"], top_p["position"], top_p["team"], top_p["ufl_pts"], governor=gov)
 
-        # Calculate final starter standings
+        # Calculate final starter standings (bye-aware & matchup-aware 4-week portfolio)
         standings = []
         for g in draft_state.governors:
             r_list = draft_state.rosters.get(g, [])
-            starter_pts = optimizer.solve_weekly_starting_lineup(r_list)
+            starter_pts = optimizer.solve_4_week_portfolio(r_list, projections_df=projections_df)
             total_pts = sum(p["ufl_pts"] for p in r_list)
             standings.append({
                 "governor": g,
