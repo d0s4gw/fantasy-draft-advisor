@@ -11,7 +11,7 @@
     },
     {
       "id": "sleeper_ytd",
-      "name": "Sleeper YTD Actual Performance (Per-Game Pace)",
+      "name": "Sleeper YTD Actuals (Recency-Weighted Pace)",
       "filename": "sleeper_ytd.csv",
       "weight": 1.0,
       "enabled": true,
@@ -20,9 +20,9 @@
     },
     {
       "id": "fftoday",
-      "name": "FFToday Projections (Live Scraper)",
+      "name": "FFToday Projections (Preseason Anchor)",
       "filename": "fftoday.csv",
-      "weight": 0.5,
+      "weight": 0.15,
       "enabled": true,
       "auto_fetch": true,
       "fetcher_type": "web_scraper"

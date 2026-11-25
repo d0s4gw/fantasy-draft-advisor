@@ -59,15 +59,15 @@ class ProjectionSynthesizer:
 
         # Load scoring rules and quarter config from league config.json
         self.scoring_rules = self.DEFAULT_SCORING_RULES.copy()
-        self.weeks = [9, 10, 11, 12]  # default Q3
-        self.target_quarter = "Q3"
+        self.weeks = [13, 14, 15, 16]  # default Q4
+        self.target_quarter = "Q4"
         if os.path.exists(self.league_config_path):
             try:
                 with open(self.league_config_path, "r") as f:
                     league_cfg = json.load(f)
                 self.scoring_rules = league_cfg.get("scoring_rules", self.DEFAULT_SCORING_RULES)
-                self.weeks = league_cfg.get("weeks", [9, 10, 11, 12])
-                self.target_quarter = league_cfg.get("target_quarter", "Q3")
+                self.weeks = league_cfg.get("weeks", [13, 14, 15, 16])
+                self.target_quarter = league_cfg.get("target_quarter", "Q4")
                 # Load bye weeks from referenced file
                 bye_file = league_cfg.get("bye_weeks_file", "bye_weeks.json")
             except Exception:
@@ -106,6 +106,13 @@ class ProjectionSynthesizer:
         """Saves current sources config."""
         with open(self.sources_config_path, "w") as f:
             json.dump(self.config, f, indent=2)
+
+    def save_overrides(self):
+        """Saves current manual player overrides to data/overrides.json."""
+        if self.overrides is None:
+            self.overrides = {"players": {}}
+        with open(self.overrides_path, "w") as f:
+            json.dump(self.overrides, f, indent=2)
 
     def synthesize(self, overrides: Optional[dict] = None) -> pd.DataFrame:
         """
@@ -171,8 +178,9 @@ class ProjectionSynthesizer:
             else:
                 combined[col] = combined[col].fillna(0.0)
 
-        # Build Q1 actual performance mapping from sleeper_ytd.csv (Weeks 1-4 completed)
+        # Build YTD actual performance & Last-4-Weeks pace mapping from sleeper_ytd.csv
         q1_actual_map = {}
+        l4w_actual_map = {}
         sleeper_ytd_path = os.path.join(self.sources_dir, "sleeper_ytd.csv")
         if os.path.exists(sleeper_ytd_path):
             try:
@@ -182,7 +190,26 @@ class ProjectionSynthesizer:
                     if y_name:
                         pts = calculate_ufl_points(ytd_row, self.scoring_rules)
                         q1_actual_map[y_name.lower()] = round(pts, 1)
+                        if "l4w_pts" in df_ytd.columns and pd.notnull(ytd_row.get("l4w_pts")):
+                            l4w_actual_map[y_name.lower()] = round(float(ytd_row["l4w_pts"]), 1)
             except Exception as e:
+                pass
+
+        # Load per-week matchup shares from fantasypros.csv (if present)
+        wk_share_map: Dict[str, Dict[int, float]] = {}
+        if os.path.exists(fp_path):
+            try:
+                df_fp_shares = pd.read_csv(fp_path)
+                share_cols = [f"wk_share_w{w}" for w in self.weeks if f"wk_share_w{w}" in df_fp_shares.columns]
+                if share_cols and "name" in df_fp_shares.columns:
+                    for _, s_row in df_fp_shares.iterrows():
+                        s_name = normalize_player_name(str(s_row["name"])).lower()
+                        wk_share_map[s_name] = {
+                            w: float(s_row[f"wk_share_w{w}"])
+                            for w in self.weeks
+                            if f"wk_share_w{w}" in s_row and pd.notnull(s_row[f"wk_share_w{w}"])
+                        }
+            except Exception:
                 pass
 
         # Weighted aggregation grouped by player name & position
@@ -197,6 +224,7 @@ class ProjectionSynthesizer:
                 "team": team.upper(),
                 "adp": group["adp"].mean() if "adp" in group.columns else 999.0,
                 "q1_pts": q1_actual_map.get(name.lower(), 0.0),
+                "l4w_pts": l4w_actual_map.get(name.lower(), 0.0),
             }
             
             # Weighted average for stats
@@ -232,9 +260,12 @@ class ProjectionSynthesizer:
                 if self.weeks:
                     missed_weeks = {self.weeks[0]}
             elif inj_status == "DOUBTFUL":
-                inj_mult = 0.25
+                inj_mult = 0.50
+                if self.weeks:
+                    missed_weeks = {self.weeks[0]}
             elif inj_status == "QUESTIONABLE":
-                inj_mult = 0.75
+                # Mild caution for Wednesday/Thursday Questionable practice tags (avoids -25% over-penalty)
+                inj_mult = 0.90
 
             # Handle games-based return timeline overrides (0.75 for 3 games, 0.50 for 2, 0.25 for 1, 0.0 for 0)
             if "expected_games" in player_override:
@@ -317,13 +348,21 @@ class ProjectionSynthesizer:
             playable_weeks = [w for w in self.weeks if w != bye_week and w not in missed_weeks]
             num_playable = len(playable_weeks)
 
-            # Compute per-week point columns for the optimizer
+            # Compute per-week point columns for the optimizer (preserving matchup shares only when all playable weeks have shares)
+            player_shares = wk_share_map.get(name.lower(), {})
+            has_complete_shares = (
+                len(playable_weeks) > 0
+                and all(player_shares.get(w, 0.0) > 0.0 for w in playable_weeks)
+            )
+            playable_share_sum = sum(player_shares.get(w, 0.0) for w in playable_weeks) if has_complete_shares else 0.0
             for week in self.weeks:
                 col = f"ufl_pts_w{week}"
                 if week == bye_week or week in missed_weeks or inj_mult == 0.0:
                     row[col] = 0.0
                 else:
-                    if num_playable > 0:
+                    if has_complete_shares and playable_share_sum > 0.0:
+                        row[col] = round(ufl_pts * (player_shares[week] / playable_share_sum), 2)
+                    elif num_playable > 0:
                         row[col] = round(ufl_pts / num_playable, 2)
                     elif num_active_weeks > 0:
                         row[col] = round(ufl_pts / num_active_weeks, 2)

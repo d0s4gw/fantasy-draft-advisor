@@ -1,4 +1,4 @@
 {
-  "_doc": "Manual player overrides for Q3 (Weeks 9-12). Supported keys per player: 'expected_games' (3 -> 0.75, 2 -> 0.50, 1 -> 0.25, 0 -> 0.0), 'return_week' (e.g. 10, 11, 12, 13), 'missed_weeks' (e.g. [9]), 'status' (e.g. 'HEALTHY', 'OUT', 'IR', 'QUESTIONABLE'), 'touch_multiplier' (float).",
+  "_doc": "Manual player overrides for Q4 (Weeks 13-16). Supported keys per player: 'expected_games' (3 -> 0.75, 2 -> 0.50, 1 -> 0.25, 0 -> 0.0), 'return_week' (e.g. 14, 15, 16, 17), 'missed_weeks' (e.g. [13]), 'status' (e.g. 'HEALTHY', 'OUT', 'IR', 'QUESTIONABLE'), 'touch_multiplier' (float).",
   "players": {}
 }

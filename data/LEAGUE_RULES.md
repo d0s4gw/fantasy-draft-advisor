@@ -16,7 +16,7 @@
 | Teams               | 6 ("Governors")            |
 | Draft Format        | 12-Round Snake Draft       |
 | Total Picks         | 72                         |
-| Scoring Window      | Q3 — Weeks 9 through 12    |
+| Scoring Window      | Q4 — Weeks 13 through 16   |
 | Waivers             | **None** (no-waiver league)|
 
 ### Governors (Draft Order)
@@ -116,18 +116,18 @@
 
 ---
 
-## Bye Weeks (Q3 Handling)
+## Bye Weeks (Q4 Handling)
 
 - Each NFL team has exactly one bye week during the season (Weeks 5–14).
 - Players score **0 pts** in their team's bye week. The optimizer automatically benches
   them and starts the best available bench replacement that week.
 - The 2026 bye week schedule is in `data/bye_weeks.json` (single source of truth).
-- **Q3 bye weeks (byes that fall within Weeks 9–12 — 12 teams total)**:
-  - **Week 9**: Pittsburgh Steelers (PIT), Tennessee Titans (TEN)
-  - **Week 10**: Chicago Bears (CHI), Denver Broncos (DEN), Philadelphia Eagles (PHI), Tampa Bay Buccaneers (TB)
-  - **Week 11**: Atlanta Falcons (ATL), Cleveland Browns (CLE), Green Bay Packers (GB), Los Angeles Rams (LAR), New England Patriots (NE), Seattle Seahawks (SEA)
-  - **Week 12**: *None* (Thanksgiving week — all 32 teams play)
-- Teams with byes in Weeks 5–8 (14 teams) and Weeks 13–14 (6 teams: BAL, IND, LV, NYJ, ARI, DAL) are **unaffected** during Q3 scoring (play all 4 weeks).
+- **Q4 bye weeks (byes that fall within Weeks 13–16 — 6 teams total)**:
+  - **Week 13**: Baltimore Ravens (BAL), Indianapolis Colts (IND), Las Vegas Raiders (LV), New York Jets (NYJ)
+  - **Week 14**: Arizona Cardinals (ARI), Dallas Cowboys (DAL)
+  - **Week 15**: *None* (all 32 teams play)
+  - **Week 16**: *None* (all 32 teams play)
+- All other 26 NFL teams (byes in Weeks 5–11) are **unaffected** during Q4 scoring (play all 4 weeks).
 
 ---
 

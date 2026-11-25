@@ -23,7 +23,7 @@ def render_mock_simulator(draft_state, projections_df, vorp_df, selected_strateg
         display_df = vorp_df.copy()
         if only_avail:
             display_df = display_df[~display_df["name"].str.lower().isin(draft_state.drafted_players)]
-        cols_show = ["name", "position", "team", "vorp", "ceiling_pts", "floor_pts", "ufl_pts"]
+        cols_show = ["name", "position", "team", "injury_status", "l4w_pts", "vorp", "ceiling_pts", "floor_pts", "ufl_pts"]
         avail_cols = [c for c in cols_show if c in display_df.columns]
         st.dataframe(display_df[avail_cols], width="stretch", hide_index=True)
 
@@ -65,20 +65,20 @@ def render_mock_simulator(draft_state, projections_df, vorp_df, selected_strateg
 
                 # NEW: Show final standings after simulation
                 st.markdown("---")
-                tq = draft_state.config.get("target_quarter", "Q3")
-                st.markdown(f"##### 🏆 Simulated Final {tq} Standings")
+                tq = draft_state.config.get("target_quarter", "Q4")
+                st.markdown(f"##### 🏆 Simulated Final {tq} Standings (Bye-Aware)")
                 standings_optimizer = JointOptimizer(sim_ds.roster_limits)
                 sim_standings = []
                 for gov in sim_ds.governors:
                     r_list = sim_ds.rosters.get(gov, [])
                     details = standings_optimizer.get_optimal_lineup_details(r_list, projections_df=projections_df)
+                    starter_pts = standings_optimizer.solve_4_week_portfolio(r_list, projections_df=projections_df)
                     is_user = " ⭐" if gov == draft_state.my_team else ""
-                    starter_pts = details.get("starter_q2_pts", details.get("starter_q1_pts", 0.0))
                     total_pts = details.get("total_roster_q2_pts", details.get("total_roster_q1_pts", 0.0))
                     sim_standings.append({
                         "Governor": f"{gov}{is_user}",
                         "Drafted": len(r_list),
-                        "Starter PPG": round(details["starter_weekly_ppg"], 1),
+                        "Starter PPG": round(starter_pts / 4.0, 1),
                         f"Starter {tq} Pts": round(starter_pts, 1),
                         f"Total Roster {tq} Pts": round(total_pts, 1),
                         "Efficiency": f"{details['starter_efficiency_pct']:.1f}%",

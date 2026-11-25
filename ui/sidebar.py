@@ -12,13 +12,15 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
     """Renders the complete sidebar with popovers and control buttons."""
     with st.sidebar:
         st.title("Draft Command Center")
-        tq = draft_state.config.get('target_quarter', 'Q3')
-        weeks = draft_state.config.get('weeks', [9, 10, 11, 12])
-        w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 9–12"
+        tq = draft_state.config.get('target_quarter', 'Q4')
+        weeks = draft_state.config.get('weeks', [13, 14, 15, 16])
+        w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 13–16"
 
         with st.container(border=True):
             st.markdown(f"🎯 **Target Quarter**: :green-background[**{tq} ({w_str})**]")
-            st.caption(f"👤 Target Team: **`{draft_state.my_team}`**  \n🛠️ Bye weeks active in scoring window")
+            sync_active = bool(st.session_state.get("sleeper_draft_id_val")) and bool(st.session_state.get("auto_sync_val"))
+            sync_line = f"  \n🟢 Sleeper Auto-Sync: **ON** ({len(draft_state.picks_history)}/72 picks)" if sync_active else f"  \n🛠️ Picks logged: **{len(draft_state.picks_history)}/72**"
+            st.caption(f"👤 Target Team: **`{draft_state.my_team}`**{sync_line}")
 
 
         # EXPANDER: LIVE DATA SOURCES & PUBLISHED DATES LOGGING
@@ -69,6 +71,61 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
 
             # Spacer at bottom of popover 1
             st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+        # POPOVER 1B: QUICK PLAYER OVERRIDES
+        with st.popover("🩹 Player overrides", icon=":material/medical_services:", width="stretch"):
+            st.markdown(f"#### Manual {tq} player overrides")
+            all_names = sorted(projections_df["name"].unique().tolist()) if not projections_df.empty else []
+            existing_ov = (synth.overrides or {}).get("players", {})
+            if existing_ov:
+                st.caption(f"Active overrides ({len(existing_ov)}): " + ", ".join(sorted(existing_ov.keys())))
+
+            with st.form("player_override_form", clear_on_submit=False):
+                ov_player = st.selectbox("Player", all_names, key="ov_sel_player") if all_names else None
+                ov_status = st.selectbox(
+                    "Injury status override",
+                    ["AUTO (Sleeper)", "HEALTHY", "QUESTIONABLE", "OUT", "DOUBTFUL", "IR"],
+                    key="ov_sel_status"
+                )
+                ov_exp_games = st.selectbox(
+                    "Expected games in quarter",
+                    ["AUTO", 4, 3, 2, 1, 0],
+                    key="ov_sel_games"
+                )
+                ov_touch = st.slider(
+                    "Usage / touch multiplier",
+                    min_value=0.50, max_value=1.50, value=1.00, step=0.05,
+                    key="ov_touch_slider"
+                )
+                c_ov1, c_ov2 = st.columns(2)
+                save_ov = c_ov1.form_submit_button("Save override", type="primary", width="stretch")
+                clear_ov = c_ov2.form_submit_button("Clear player", width="stretch")
+
+                if save_ov and ov_player:
+                    entry = {}
+                    if ov_status != "AUTO (Sleeper)":
+                        entry["status"] = ov_status
+                    if ov_exp_games != "AUTO":
+                        entry["expected_games"] = int(ov_exp_games)
+                    if abs(ov_touch - 1.0) > 0.001:
+                        entry["touch_multiplier"] = round(float(ov_touch), 2)
+                    if synth.overrides is None:
+                        synth.overrides = {"players": {}}
+                    if entry:
+                        synth.overrides.setdefault("players", {})[ov_player] = entry
+                        synth.save_overrides()
+                        st.cache_data.clear()
+                        st.toast(f"Saved override for {ov_player}!")
+                        st.rerun()
+                    else:
+                        st.warning("Set at least one non-default override value before saving.")
+                elif clear_ov and ov_player:
+                    if synth.overrides and ov_player in synth.overrides.get("players", {}):
+                        del synth.overrides["players"][ov_player]
+                        synth.save_overrides()
+                        st.cache_data.clear()
+                        st.toast(f"Cleared override for {ov_player}!")
+                        st.rerun()
 
         # POPOVER 2: RECORD PICK / SLEEPER SYNC
         with st.popover("✏️ Record pick / Sleeper sync", icon=":material/sync:", width="stretch"):

@@ -26,13 +26,16 @@ class LiveMathEngine(DraftEngineBase):
             pos_df = valid_res[valid_res["position"] == pos].head(5)
             res = []
             for _, r in pos_df.iterrows():
+                ppg_val = float(r["points_per_game"]) if "points_per_game" in r and pd.notnull(r["points_per_game"]) else round(r["ufl_pts"] / 4.0, 1)
                 res.append({
                     "name": r["name"],
                     "position": r["position"],
                     "team": r["team"],
                     "ufl_pts": r["ufl_pts"],
                     "q1_pts": float(r.get("q1_pts", 0.0)),
-                    "ppg": round(r["ufl_pts"] / 4.0, 1),
+                    "l4w_pts": float(r.get("l4w_pts", 0.0)),
+                    "injury_status": str(r.get("injury_status", "HEALTHY")),
+                    "ppg": round(ppg_val, 1),
                     "marginal_gain": r.get("marginal_gain", r.get("vorp", 0.0)),
                     "adp": r.get("adp", 99.0),
                     "ai_insight": r.get("roster_need", "FLEX / BENCH")
@@ -45,13 +48,16 @@ class LiveMathEngine(DraftEngineBase):
         top_tes = extract_top_5("TE")
         top_player = valid_res.iloc[0] if not valid_res.empty else res_df.iloc[0]
         m_gain = top_player.get(gain_col, 0.0)
+        top_ppg = float(top_player["points_per_game"]) if "points_per_game" in top_player and pd.notnull(top_player["points_per_game"]) else round(top_player["ufl_pts"] / 4.0, 1)
         best_candidate = {
             "name": top_player["name"],
             "position": top_player["position"],
             "team": top_player["team"],
             "ufl_pts": top_player["ufl_pts"],
             "q1_pts": float(top_player.get("q1_pts", 0.0)),
-            "ppg": round(top_player["ufl_pts"] / 4.0, 1),
+            "l4w_pts": float(top_player.get("l4w_pts", 0.0)),
+            "injury_status": str(top_player.get("injury_status", "HEALTHY")),
+            "ppg": round(top_ppg, 1),
             "marginal_gain": m_gain
         }
 

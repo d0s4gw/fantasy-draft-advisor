@@ -25,9 +25,9 @@ def render_draft_results(draft_state, projections_df):
 
     # HEADER & VIEW SCALE CONTROL
     c_hdr1, c_hdr2 = st.columns([2, 1])
-    tq_label = draft_state.config.get('target_quarter', 'Q3')
-    weeks = draft_state.config.get('weeks', [9, 10, 11, 12])
-    w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 9–12"
+    tq_label = draft_state.config.get('target_quarter', 'Q4')
+    weeks = draft_state.config.get('weeks', [13, 14, 15, 16])
+    w_str = f"Weeks {weeks[0]}–{weeks[-1]}" if weeks else "Weeks 13–16"
     with c_hdr1:
         st.subheader(f"Live Projected Standings & Best Lineup Analysis ({tq_label} — {w_str})", anchor=False)
     with c_hdr2:
@@ -52,16 +52,20 @@ def render_draft_results(draft_state, projections_df):
     for gov in draft_state.governors:
         r_list = draft_state.rosters.get(gov, [])
         details = standings_optimizer.get_optimal_lineup_details(r_list, projections_df=projections_df)
+        # Solve true 4-week bye-aware & matchup-aware portfolio score
+        portfolio_q_pts = standings_optimizer.solve_4_week_portfolio(r_list, projections_df=projections_df)
+        details["portfolio_q_pts"] = portfolio_q_pts
+        details["portfolio_weekly_ppg"] = portfolio_q_pts / max(len(weeks), 1)
         gov_details_map[gov] = details
 
-        starter_q_pts = details.get("starter_q2_pts", details.get("starter_q1_pts", 0.0))
-        starter_val = round(details["starter_weekly_ppg"] if is_weekly else starter_q_pts, 1)
+        starter_q_pts = portfolio_q_pts
+        starter_val = round(details["portfolio_weekly_ppg"] if is_weekly else starter_q_pts, 1)
         total_roster_q_pts = details.get("total_roster_q2_pts", details.get("total_roster_q1_pts", 0.0))
         total_roster_val = round(details["total_roster_weekly_ppg"] if is_weekly else total_roster_q_pts, 1)
         pos_vals = details["positional_ppg"] if is_weekly else details["positional_breakdown"]
 
         # Count byes within the active scoring window for this governor's starters
-        q_weeks = draft_state.config.get("weeks", [9, 10, 11, 12])
+        q_weeks = draft_state.config.get("weeks", [13, 14, 15, 16])
         byes_in_q = 0
         for p in r_list:
             p_team = p.get("team", "")
@@ -126,14 +130,12 @@ def render_draft_results(draft_state, projections_df):
         # Metric Cards Banner
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         with m_col1:
-            tq_label = draft_state.config.get("target_quarter", "Q2")
             st.metric(
-                f"Optimal 7-Starter Score",
-                f"{sel_details['starter_weekly_ppg']:.1f} PPG",
-                delta=f"{sel_details['starter_q1_pts']:.1f} {tq_label} Pts"
+                f"Optimal 7-Starter Score (Bye-Aware)",
+                f"{sel_details['portfolio_weekly_ppg']:.1f} PPG",
+                delta=f"{sel_details['portfolio_q_pts']:.1f} {tq_label} Pts"
             )
         with m_col2:
-            tq_label = draft_state.config.get("target_quarter", "Q2")
             st.metric(
                 f"Total Roster Score",
                 f"{sel_details['total_roster_weekly_ppg']:.1f} PPG",
@@ -176,13 +178,11 @@ def render_draft_results(draft_state, projections_df):
                 with st.container(border=True):
                     if p_obj:
                         q_pts = p_obj["ufl_pts"]
-                        ppg_p = q_pts / 4.0
                         p_name = p_obj.get("name") or p_obj.get("player_name") or ""
-                        # Look up bye week from projections
                         p_match_df = projections_df[projections_df["name"] == p_name]
+                        ppg_p = float(p_match_df.iloc[0]["points_per_game"]) if not p_match_df.empty and "points_per_game" in p_match_df.columns else (q_pts / 4.0)
                         p_bye = int(p_match_df.iloc[0]["bye_week"]) if not p_match_df.empty and "bye_week" in p_match_df.columns else 0
-                        q_weeks = draft_state.config.get("weeks", [9, 10, 11, 12])
-                        tq_label = draft_state.config.get("target_quarter", "Q3")
+                        q_weeks = draft_state.config.get("weeks", [13, 14, 15, 16])
                         bye_info = f" | 🛠️ **BYE W{p_bye}** (in {tq_label})" if p_bye in q_weeks else (f" | ✅ BYE W{p_bye}" if p_bye > 0 else "")
                         st.markdown(f"**{label}**: `{p_name}` ({p_obj['position']} • {p_obj['team']})")
                         st.caption(f"{tq_label} Projection: **{q_pts:.1f} pts** ({ppg_p:.1f} PPG){bye_info}")

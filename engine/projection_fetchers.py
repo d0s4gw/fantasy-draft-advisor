@@ -620,15 +620,15 @@ class FantasyProsWebFetcher(BaseFetcher):
     def _fetch_sleeper_rotowire_weekly_projections(self) -> Optional[pd.DataFrame]:
         """
         Fetches live weekly projections from Sleeper/RotoWire projections API across
-        the configured target quarter weeks (e.g. Q3 Weeks 9-12) and converts them into
-        standardized 4-week pace projection rows.
+        the configured target quarter weeks (e.g. Q4 Weeks 13-16) and converts them into
+        standardized 4-week pace projection rows while preserving per-week matchup shares.
         """
         cfg_path = os.path.join(self.data_dir, "config.json")
-        target_weeks = [9, 10, 11, 12]
+        target_weeks = [13, 14, 15, 16]
         if os.path.exists(cfg_path):
             try:
                 with open(cfg_path, "r") as f:
-                    target_weeks = json.load(f).get("weeks", [9, 10, 11, 12])
+                    target_weeks = json.load(f).get("weeks", [13, 14, 15, 16])
             except Exception:
                 pass
 
@@ -681,6 +681,12 @@ class FantasyProsWebFetcher(BaseFetcher):
                         rc_td = float(st.get("rec_td", 0.0))
                         two_pt = float(st.get("pass_2pt", 0.0) + st.get("rush_2pt", 0.0) + st.get("rec_2pt", 0.0))
 
+                        w_ufl = (
+                            p_yd / 25.0 + p_td * 4.0 - p_int * 2.0
+                            + r_yd / 5.0 + r_td * 6.0
+                            + rec * 0.3 + rc_yd / 5.0 + rc_td * 6.0
+                            + two_pt * 2.0
+                        )
                         has_proj = (p_yd + r_yd + rc_yd + rec + p_td + r_td + rc_td) > 0.0
                         key = f"{name.lower()}_{pos}_{team}"
                         if key not in players:
@@ -690,6 +696,7 @@ class FantasyProsWebFetcher(BaseFetcher):
                                 "team": team,
                                 "inj_status": str(pl.get("injury_status") or "").upper().strip(),
                                 "active_wks": 0,
+                                "wk_pts": {tw: 0.0 for tw in target_weeks},
                                 "pass_yds": 0.0, "pass_tds": 0.0, "pass_ints": 0.0,
                                 "rush_yds": 0.0, "rush_tds": 0.0,
                                 "receptions": 0.0, "rec_yds": 0.0, "rec_tds": 0.0,
@@ -698,6 +705,7 @@ class FantasyProsWebFetcher(BaseFetcher):
                         rec_p = players[key]
                         if has_proj:
                             rec_p["active_wks"] += 1
+                            rec_p["wk_pts"][wk] = max(0.0, w_ufl)
                             rec_p["pass_yds"] += p_yd
                             rec_p["pass_tds"] += p_td
                             rec_p["pass_ints"] += p_int
@@ -718,8 +726,8 @@ class FantasyProsWebFetcher(BaseFetcher):
             b_wk = bye_map.get(team, 0)
             non_bye_cnt = sum(1 for w in target_weeks if w != b_wk)
             inj = rec_p["inj_status"]
-            # ProjectionSynthesizer applies bye_week scaling (non_bye_cnt / 4) and injury_multiplier
-            # (0.75 for QUESTIONABLE/OUT). Convert weekly sum to 4-game healthy baseline so neither is double-discounted.
+            # ProjectionSynthesizer applies bye_week scaling (non_bye_cnt / 4) and injury_multiplier.
+            # Convert weekly sum to 4-game healthy baseline so neither is double-discounted.
             if inj in ["OUT", "DOUBTFUL"] and rec_p["active_wks"] > 0:
                 scale = float(NUM_Q_WEEKS) / float(rec_p["active_wks"])
             elif non_bye_cnt > 0:
@@ -736,6 +744,16 @@ class FantasyProsWebFetcher(BaseFetcher):
             }
             for col in ["pass_yds", "pass_tds", "pass_ints", "rush_yds", "rush_tds", "receptions", "rec_yds", "rec_tds"]:
                 row[col] = round(rec_p[col] * scale, 1)
+
+            # Preserve per-week matchup shares across active weeks (summing to 1.0)
+            wk_pts_map = rec_p["wk_pts"]
+            sum_wk_pts = sum(v for w, v in wk_pts_map.items() if w != b_wk and v > 0.0)
+            for tw in target_weeks:
+                if tw == b_wk or sum_wk_pts <= 0.0:
+                    row[f"wk_share_w{tw}"] = 0.0
+                else:
+                    row[f"wk_share_w{tw}"] = round(wk_pts_map.get(tw, 0.0) / sum_wk_pts, 4)
+
             rows.append(row)
 
         if not rows:
@@ -1014,8 +1032,10 @@ class SleeperStatsFetcher(BaseFetcher):
         if not weekly_data:
             return None, []
 
+        recent_cutoff = max(1, completed_weeks[-1] - 3) if completed_weeks else 1
         player_stats = {}
         for wk, w_dict in weekly_data:
+            wk_weight = 2.0 if wk >= recent_cutoff else 1.0
             for pid, s in w_dict.items():
                 if pid not in player_stats:
                     pinfo = raw_players.get(pid, {})
@@ -1035,6 +1055,9 @@ class SleeperStatsFetcher(BaseFetcher):
                         "position": pos,
                         "team": team,
                         "gp": 0,
+                        "w_sum": 0.0,
+                        "l4w_gp": 0,
+                        "l4w_pts": 0.0,
                         "pass_yds": 0.0, "pass_tds": 0.0, "pass_ints": 0.0,
                         "rush_yds": 0.0, "rush_tds": 0.0,
                         "receptions": 0.0, "rec_yds": 0.0, "rec_tds": 0.0,
@@ -1044,42 +1067,65 @@ class SleeperStatsFetcher(BaseFetcher):
                 has_action = any(s.get(k, 0) > 0 for k in ['pass_yd', 'rush_yd', 'rec_yd', 'rec', 'rush_att', 'pass_att', 'off_snp'])
                 if has_action and pid in player_stats:
                     ps = player_stats[pid]
+                    p_yd = float(s.get("pass_yd", 0.0))
+                    p_td = float(s.get("pass_td", 0.0))
+                    p_int = float(s.get("pass_int", 0.0))
+                    r_yd = float(s.get("rush_yd", 0.0))
+                    r_td = float(s.get("rush_td", 0.0))
+                    rec = float(s.get("rec", 0.0))
+                    rc_yd = float(s.get("rec_yd", 0.0))
+                    rc_td = float(s.get("rec_td", 0.0))
+                    two_p = float(s.get("pass_2pt", 0.0) + s.get("rush_2pt", 0.0) + s.get("rec_2pt", 0.0))
+
                     ps["gp"] += 1
-                    ps["pass_yds"] += float(s.get("pass_yd", 0.0))
-                    ps["pass_tds"] += float(s.get("pass_td", 0.0))
-                    ps["pass_ints"] += float(s.get("pass_int", 0.0))
-                    ps["rush_yds"] += float(s.get("rush_yd", 0.0))
-                    ps["rush_tds"] += float(s.get("rush_td", 0.0))
-                    ps["receptions"] += float(s.get("rec", 0.0))
-                    ps["rec_yds"] += float(s.get("rec_yd", 0.0))
-                    ps["rec_tds"] += float(s.get("rec_td", 0.0))
-                    ps["two_pts"] += float(s.get("pass_2pt", 0.0) + s.get("rush_2pt", 0.0) + s.get("rec_2pt", 0.0))
+                    ps["w_sum"] += wk_weight
+                    ps["pass_yds"] += p_yd * wk_weight
+                    ps["pass_tds"] += p_td * wk_weight
+                    ps["pass_ints"] += p_int * wk_weight
+                    ps["rush_yds"] += r_yd * wk_weight
+                    ps["rush_tds"] += r_td * wk_weight
+                    ps["receptions"] += rec * wk_weight
+                    ps["rec_yds"] += rc_yd * wk_weight
+                    ps["rec_tds"] += rc_td * wk_weight
+                    ps["two_pts"] += two_p * wk_weight
+
+                    if wk >= recent_cutoff:
+                        ps["l4w_gp"] += 1
+                        ps["l4w_pts"] += (
+                            p_yd / 25.0 + p_td * 4.0 - p_int * 2.0
+                            + r_yd / 5.0 + r_td * 6.0
+                            + rec * 0.3 + rc_yd / 5.0 + rc_td * 6.0
+                            + two_p * 2.0
+                        )
 
         rows = []
-        num_comp_weeks = len(completed_weeks)
         for pid, ps in player_stats.items():
-            if ps["gp"] == 0:
+            if ps["gp"] == 0 or ps["w_sum"] <= 0.0:
                 continue
             gp = ps["gp"]
             team_val = TEAM_ABBR_CANONICAL.get(ps["team"], ps["team"])
             b_wk = bye_map.get(team_val, 0)
             # For mid-season YTD (6+ weeks played), prevent 1-2 game backup spot-starters
-            # (e.g. Jacoby Brissett, Marcus Mariota, Carson Wentz) from being extrapolated as 4-game starters
+            # from being extrapolated as 4-game starters
             team_games_played = sum(1 for w in completed_weeks if w != b_wk)
-            denom_gp = gp if gp >= max(3, team_games_played // 2) else max(gp, team_games_played)
+            min_starter_gp = max(3, team_games_played // 2)
+            damp_factor = 1.0 if gp >= min_starter_gp else (float(gp) / float(max(gp, team_games_played)))
+            scale_4wk = (float(NUM_Q_WEEKS) / ps["w_sum"]) * damp_factor
+            l4w_pace = round((ps["l4w_pts"] / ps["l4w_gp"]) * NUM_Q_WEEKS, 1) if ps["l4w_gp"] > 0 else 0.0
             rows.append({
                 "name": ps["name"],
                 "position": ps["position"],
                 "team": team_val,
-                "pass_yds": round(ps["pass_yds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "pass_tds": round(ps["pass_tds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "pass_ints": round(ps["pass_ints"] / denom_gp * NUM_Q_WEEKS, 1),
-                "rush_yds": round(ps["rush_yds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "rush_tds": round(ps["rush_tds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "receptions": round(ps["receptions"] / denom_gp * NUM_Q_WEEKS, 1),
-                "rec_yds": round(ps["rec_yds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "rec_tds": round(ps["rec_tds"] / denom_gp * NUM_Q_WEEKS, 1),
-                "two_pts": round(ps["two_pts"] / denom_gp * NUM_Q_WEEKS, 1),
+                "pass_yds": round(ps["pass_yds"] * scale_4wk, 1),
+                "pass_tds": round(ps["pass_tds"] * scale_4wk, 1),
+                "pass_ints": round(ps["pass_ints"] * scale_4wk, 1),
+                "rush_yds": round(ps["rush_yds"] * scale_4wk, 1),
+                "rush_tds": round(ps["rush_tds"] * scale_4wk, 1),
+                "receptions": round(ps["receptions"] * scale_4wk, 1),
+                "rec_yds": round(ps["rec_yds"] * scale_4wk, 1),
+                "rec_tds": round(ps["rec_tds"] * scale_4wk, 1),
+                "two_pts": round(ps["two_pts"] * scale_4wk, 1),
+                "l4w_pts": l4w_pace,
                 "adp": 999.0,
                 "bye_week": b_wk
             })
@@ -1297,7 +1343,7 @@ class FetcherManager:
             fp_result["urls"] = urls_fp
             fp_result["valid"] = valid_fp
             fp_result["published_date"] = fp_fetcher.published_date
-            fp_result["source_label"] = "Live Q3 Weekly Projections"
+            fp_result["source_label"] = "Live Weekly Matchup Projections"
             if not valid_fp:
                 logger.info(f"FantasyPros web scraper: {msg}")
 

@@ -8,13 +8,29 @@ import streamlit as st
 from typing import Dict, List
 
 
+def _format_injury_badge(status: str) -> str:
+    """Returns a compact badge for non-healthy injury statuses."""
+    s = str(status or "HEALTHY").upper().strip()
+    if s in ["", "HEALTHY", "NONE", "NAN"]:
+        return ""
+    if s == "QUESTIONABLE":
+        return " 🩹Q"
+    if s == "OUT":
+        return " 🚑OUT"
+    if s == "DOUBTFUL":
+        return " ⚠️D"
+    if s in ["IR", "PUP", "SUS", "SUSPENDED", "NFI", "INJURED RESERVE"]:
+        return f" ❌{s}"
+    return f" ⚠️{s}"
+
+
 def render_command_center(
     draft_state, projections_df, rec_projections_df, vorp_df, vorp_calc,
     rec_result, active_engine, selected_strategy_key, selected_vorp_mode
 ):
     """Renders the Draft Command Center tab."""
     curr_pick_i = draft_state.current_pick_info()
-    tq = draft_state.config.get("target_quarter", "Q3")
+    tq = draft_state.config.get("target_quarter", "Q4")
     if not curr_pick_i:
         st.success(f"🎉 **{tq} DRAFT COMPLETE!** All 72 picks have been recorded.")
         on_clock_gov = draft_state.my_team
@@ -49,9 +65,12 @@ def render_command_center(
         c_rec1, c_rec2 = st.columns([3, 1])
         with c_rec1:
             best_pts = best_candidate.get('ufl_pts', 0.0)
-            best_q1 = best_candidate.get('q1_pts', 0.0)
-            q1_label = f" | Actual Q1: **{best_q1:.1f}** Pts" if best_q1 and best_q1 > 0 else ""
-            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}** ({best_candidate['position']} • {best_candidate['team']}) — Proj {tq}: **{best_pts:.1f}** Pts{q1_label}")
+            best_ytd = best_candidate.get('q1_pts', 0.0)
+            best_l4w = best_candidate.get('l4w_pts', 0.0)
+            inj_tag = _format_injury_badge(best_candidate.get('injury_status', 'HEALTHY'))
+            ytd_label = f" | YTD Pace: **{best_ytd:.1f}**" if best_ytd and best_ytd > 0 else ""
+            l4w_label = f" | L4W: **{best_l4w:.1f}**" if best_l4w and best_l4w > 0 else ""
+            st.markdown(f"### 🎯 Recommended Pick: **{best_candidate['name']}**{inj_tag} ({best_candidate['position']} • {best_candidate['team']}) — Proj {tq}: **{best_pts:.1f}** Pts{ytd_label}{l4w_label}")
             st.markdown(rec_result.get("advice_text", ""))
         with c_rec2:
             if st.button("⚡ SLAM PICK", type="primary", width="stretch", help=f"Record {best_candidate['name']} to {on_clock_gov}"):
@@ -96,7 +115,7 @@ def render_command_center(
 
 def _render_war_room(draft_state, rec_projections_df, active_engine, selected_strategy_key, on_clock_gov, curr_pick_i):
     """Renders the Turn Strategy War Room decision matrix."""
-    tq = draft_state.config.get("target_quarter", "Q3")
+    tq = draft_state.config.get("target_quarter", "Q4")
     with st.expander(f"⚔️ **Turn Strategy War Room — {tq} Decision Matrix & Survival Odds**", expanded=(curr_pick_i is not None and on_clock_gov == draft_state.my_team)):
         c_war1, c_war2 = st.columns([4, 1])
         with c_war1:
@@ -119,14 +138,18 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
             st.markdown(f"##### 📊 {tq} Candidate Comparison Matrix")
             matrix_display = []
             for c in candidates_list:
-                q1_pts_val = c.get("q1_pts", 0.0)
-                q1_display = f"{q1_pts_val:.1f}" if q1_pts_val > 0 else "—"
+                ytd_pts_val = c.get("q1_pts", 0.0)
+                l4w_pts_val = c.get("l4w_pts", 0.0)
+                ytd_display = f"{ytd_pts_val:.1f}" if ytd_pts_val > 0 else "—"
+                l4w_display = f"{l4w_pts_val:.1f}" if l4w_pts_val > 0 else "—"
+                inj_tag = _format_injury_badge(c.get("injury_status", "HEALTHY"))
                 matrix_display.append({
                     "Action Badge": f"{c['badge']}",
                     "Bye Status": f"{c.get('bye_badge', '')}",
-                    "Player": f"{c['name']} ({c['position']} • {c['team']})",
-                    "Actual Q1 Pts": q1_display,
-                    f"Proj {tq} Pts": f"{c['ufl_pts']:.1f}",
+                    "Player": f"{c['name']}{inj_tag} ({c['position']} • {c['team']})",
+                    "YTD Pace": ytd_display,
+                    "L4W Pace": l4w_display,
+                    f"Proj {tq} Pts": f"{c['ufl_pts']:.1f} ({c['ppg']:.1f}/g)",
                     "Net Gain": f"+{c['marginal_gain']:.1f}",
                     "Survival Odds": f"{c['survival_pct']:.1f}%",
                     "Regret Cliff": f"-{c['regret_cliff']:.1f} Pts" if c['regret_cliff'] > 0 else "0.0 Pts",
@@ -161,23 +184,23 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
                 gain_diff = round(p1_c["marginal_gain"] - p2_c["marginal_gain"], 1)
                 surv_diff = round(p1_c["survival_pct"] - p2_c["survival_pct"], 1)
                 cliff_diff = round(p1_c["regret_cliff"] - p2_c["regret_cliff"], 1)
-                p1_q1 = p1_c.get("q1_pts", 0.0)
-                p2_q1 = p2_c.get("q1_pts", 0.0)
-                q1_diff = round(p1_q1 - p2_q1, 1)
+                p1_ytd = p1_c.get("q1_pts", 0.0)
+                p2_ytd = p2_c.get("q1_pts", 0.0)
+                ytd_diff = round(p1_ytd - p2_ytd, 1)
 
                 st.markdown(f"""
                 **Head-to-Head Comparison ({p1_name} vs {p2_name})**:
                 - 📈 **Net Portfolio Gain Delta**: `{'+' if gain_diff >= 0 else ''}{gain_diff} Pts`
                 - 🎯 **Survival Odds Delta**: `{'+' if surv_diff >= 0 else ''}{surv_diff}%` ({p1_name}: {p1_c['survival_pct']}% vs {p2_name}: {p2_c['survival_pct']}%)
                 - 🛡️ **Positional Regret Cliff Delta**: `{'+' if cliff_diff >= 0 else ''}{cliff_diff} Pts` (Drop-off if position is passed on)
-                - 📊 **Actual Q1 Performance Delta**: `{'+' if q1_diff >= 0 else ''}{q1_diff} Pts` ({p1_name}: {p1_q1:.1f} Pts vs {p2_name}: {p2_q1:.1f} Pts)
+                - 📊 **YTD 4-Wk Pace Delta**: `{'+' if ytd_diff >= 0 else ''}{ytd_diff} Pts` ({p1_name}: {p1_ytd:.1f} Pts vs {p2_name}: {p2_ytd:.1f} Pts)
                 """)
 
 
 def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, projections_df, draft_state, on_clock_gov):
     """Renders a single positional column with top-5 players."""
-    tq = draft_state.config.get("target_quarter", "Q3")
-    weeks_in_q = draft_state.config.get("weeks", [9, 10, 11, 12])
+    tq = draft_state.config.get("target_quarter", "Q4")
+    weeks_in_q = draft_state.config.get("weeks", [13, 14, 15, 16])
     my_roster = draft_state.rosters.get(draft_state.my_team, [])
     with col_obj:
         st.subheader(title, anchor=False)
@@ -188,6 +211,7 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             p_name = p["name"]
             is_flagged = p.get("at_risk", False)
             risk_badge = " ⚠️" if is_flagged else ""
+            inj_badge = _format_injury_badge(p.get("injury_status", "HEALTHY"))
             
             # Check if player in vorp_df to get gain/vorp
             v_match = vorp_df[vorp_df["name"] == p_name]
@@ -200,8 +224,8 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             else:
                 vorp_str = f"{gain_val:.1f}"
 
-            st.markdown(f"**{p_name}** ({p['team']}){risk_badge}")
-            # Show bye week badge for Q2 — highlight byes inside the scoring window
+            st.markdown(f"**{p_name}**{inj_badge} ({p['team']}){risk_badge}")
+            # Show bye week badge — highlight byes inside the scoring window
             bye_wk = 0
             p_match = projections_df[projections_df["name"] == p_name]
             if not p_match.empty and "bye_week" in p_match.columns:
@@ -221,12 +245,16 @@ def _render_position_column(col_obj, title: str, players: List[Dict], vorp_df, p
             else:
                 bye_str = ""
 
-            q1_val = p.get("q1_pts", 0.0)
-            if (not q1_val or q1_val == 0.0) and not p_match.empty and "q1_pts" in p_match.columns:
-                q1_val = p_match.iloc[0]["q1_pts"]
-            q1_badge = f"Actual Q1: **{float(q1_val):.1f}** | " if q1_val and float(q1_val) > 0 else "Actual Q1: **—** | "
+            ytd_val = p.get("q1_pts", 0.0)
+            l4w_val = p.get("l4w_pts", 0.0)
+            if (not ytd_val or ytd_val == 0.0) and not p_match.empty and "q1_pts" in p_match.columns:
+                ytd_val = p_match.iloc[0]["q1_pts"]
+            if (not l4w_val or l4w_val == 0.0) and not p_match.empty and "l4w_pts" in p_match.columns:
+                l4w_val = p_match.iloc[0]["l4w_pts"]
+            ytd_badge = f"YTD: **{float(ytd_val):.1f}**" if ytd_val and float(ytd_val) > 0 else "YTD: **—**"
+            l4w_badge = f" • L4W: **{float(l4w_val):.1f}**" if l4w_val and float(l4w_val) > 0 else ""
 
-            st.caption(f"{q1_badge}Proj {tq}: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}{bye_str}")
+            st.caption(f"{ytd_badge}{l4w_badge} | Proj {tq}: **{p['ufl_pts']:.1f}** ({p['ppg']:.1f}/g) | VORP: {vorp_str}{bye_str}")
 
             if st.button(f"Draft {p['position']}", key=f"draft_btn_{title}_{p_name}", width="stretch"):
                 p_info = projections_df[projections_df["name"] == p_name].iloc[0]

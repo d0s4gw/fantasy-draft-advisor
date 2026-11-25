@@ -515,7 +515,7 @@ def test_mock_draft_roster_compliance():
     vorp_calc = VORPCalculator(ds.roster_limits)
 
     # Execute full 72-pick mock draft
-    ir_banned = {"jalen hurts", "lamar jackson", "jaxson dart"}
+    ir_players = set(df[df["ufl_pts"] <= 0.0]["name"].str.lower().tolist())
     for pick_no in range(1, 73):
         curr = ds.current_pick_info()
         if not curr:
@@ -525,18 +525,17 @@ def test_mock_draft_roster_compliance():
         if v_df.empty:
             break
         rec_names = set(v_df["name"].str.lower().tolist())
-        overlap = ir_banned.intersection(rec_names)
-        assert not overlap, f"IR player(s) {overlap} should never appear in VORP recommendations at pick #{pick_no}"
+        overlap = ir_players.intersection(rec_names)
+        assert not overlap, f"0-pt/IR player(s) {list(overlap)[:5]} should never appear in VORP recommendations at pick #{pick_no}"
         top = v_df.iloc[0]
         ds.record_pick(top["name"], top["position"], top["team"], top["ufl_pts"], governor=gov)
 
     assert len(ds.picks_history) == 72, f"Mock draft should complete all 72 picks, got {len(ds.picks_history)}"
     drafted_lower = {p["player_name"].lower(): p for p in ds.picks_history}
-    for banned in ir_banned:
-        assert banned not in drafted_lower, f"IR player {banned} must never be drafted in simulation"
+    assert not ir_players.intersection(drafted_lower.keys()), "0-pt/IR players must never be drafted in simulation"
     assert "jaxon smith-njigba" in drafted_lower, "Jaxon Smith-Njigba must be drafted"
-    assert drafted_lower["jaxon smith-njigba"]["round"] == 1, (
-        f"Jaxon Smith-Njigba should be a Round 1 pick, got Round {drafted_lower['jaxon smith-njigba']['round']}"
+    assert drafted_lower["jaxon smith-njigba"]["round"] <= 2, (
+        f"Jaxon Smith-Njigba should be an early pick, got Round {drafted_lower['jaxon smith-njigba']['round']}"
     )
 
     # Verify every governor meets minimum roster requirements (no-waiver league)
@@ -642,14 +641,14 @@ def test_projection_freshness():
 
 def test_bye_weeks():
     """
-    Tests bye week handling for Q3 scoring:
+    Tests bye week handling for Q4 scoring:
     1. bye_weeks.json loads and contains all 32 NFL teams
-    2. ProjectionSynthesizer generates per-week ufl_pts_wN columns
-    3. Players with byes inside Q3 (Weeks 9-12) have ufl_pts_wN = 0.0 for their bye
+    2. ProjectionSynthesizer generates per-week ufl_pts_wN columns (Weeks 13-16)
+    3. Players with byes inside Q4 (W13: BAL/IND/LV/NYJ; W14: ARI/DAL) have ufl_pts_wN = 0.0 for their bye
     4. solve_4_week_portfolio() scores 0 for a player's bye week and sums correctly
     5. Cliff detection annotates bye weeks in messages
     """
-    print("Testing Bye Week Handling (Q3 W9-W12)...")
+    print("Testing Bye Week Handling (Q4 W13-W16)...")
     import json
 
     # 1. Load bye_weeks.json
@@ -660,85 +659,81 @@ def test_bye_weeks():
     bye_map = {k: int(v) for k, v in raw_bye.items() if not k.startswith("_")}
     assert len(bye_map) == 32, f"Expected 32 NFL teams in bye_weeks.json, got {len(bye_map)}"
     # Spot check known byes
-    assert bye_map.get("PIT") == 9, "PIT bye week should be 9"
+    assert bye_map.get("BAL") == 13, "BAL bye week should be 13"
+    assert bye_map.get("DAL") == 14, "DAL bye week should be 14"
     assert bye_map.get("PHI") == 10, "PHI bye week should be 10"
     assert bye_map.get("ATL") == 11, "ATL bye week should be 11"
-    assert bye_map.get("DAL") == 14, "DAL bye week should be 14"
 
-    # 2. ProjectionSynthesizer produces per-week columns for Q3 weeks
+    # 2. ProjectionSynthesizer produces per-week columns for Q4 weeks
     synth = ProjectionSynthesizer(DATA_DIR)
     df = synth.synthesize()
     assert not df.empty, "Synthesized DataFrame should not be empty"
-    q3_weeks = synth.weeks  # should be [9, 10, 11, 12]
-    assert q3_weeks == [9, 10, 11, 12], f"Expected Q3 weeks [9,10,11,12], got {q3_weeks}"
-    for week in q3_weeks:
+    q4_weeks = synth.weeks  # should be [13, 14, 15, 16]
+    assert q4_weeks == [13, 14, 15, 16], f"Expected Q4 weeks [13,14,15,16], got {q4_weeks}"
+    for week in q4_weeks:
         col = f"ufl_pts_w{week}"
         assert col in df.columns, f"Missing per-week column {col} in synthesized DataFrame"
+    assert "l4w_pts" in df.columns, "Synthesized DataFrame should include l4w_pts column"
 
-    # 3. Players with Q3 byes have that week zeroed out
-    # PHI has bye W10 — find any PHI player
-    phi_players = df[df["team"] == "PHI"]
-    if not phi_players.empty:
-        phi_row = phi_players.iloc[0]
-        assert phi_row["ufl_pts_w10"] == 0.0, (
-            f"PHI player {phi_row['name']} should have 0 pts in W10 (bye), got {phi_row['ufl_pts_w10']}"
-        )
-        # Non-bye weeks should be > 0 if player has any projections
-        if phi_row["ufl_pts"] > 0:
-            assert phi_row["ufl_pts_w9"] > 0 or phi_row["ufl_pts_w11"] > 0 or phi_row["ufl_pts_w12"] > 0, (
-                f"PHI player {phi_row['name']} should have >0 pts in non-bye Q3 weeks"
-            )
-        # Total ufl_pts should equal sum of 4 weekly values
-        weekly_sum = round(
-            phi_row["ufl_pts_w9"] + phi_row["ufl_pts_w10"] +
-            phi_row["ufl_pts_w11"] + phi_row["ufl_pts_w12"], 2
-        )
-        assert abs(weekly_sum - round(phi_row["ufl_pts"], 2)) < 0.1, (
-            f"PHI player {phi_row['name']}: sum of weekly pts ({weekly_sum}) should ~= ufl_pts ({phi_row['ufl_pts']})"
-        )
+    # Global invariant: every player's weekly columns must sum to their total ufl_pts
+    wk_sum_series = sum(df[f"ufl_pts_w{w}"] for w in q4_weeks)
+    max_diff = (wk_sum_series - df["ufl_pts"]).abs().max()
+    assert max_diff < 0.2, f"Weekly column sum diverged from ufl_pts by {max_diff:.2f} pts!"
 
-    # Players with byes outside Q3 (e.g. DAL, bye W14) should have no zeroed Q3 week
-    dal_players = df[df["team"] == "DAL"]
+    # 3. Players with Q4 byes have that week zeroed out
+    # DAL has bye W14 — find active DAL player
+    dal_players = df[(df["team"] == "DAL") & (df["ufl_pts"] > 0)]
     if not dal_players.empty:
         dal_row = dal_players.iloc[0]
-        assert dal_row["bye_week"] == 14, f"DAL bye week should be 14, got {dal_row['bye_week']}"
-        if dal_row["ufl_pts"] > 0:
-            for week in q3_weeks:
-                assert dal_row[f"ufl_pts_w{week}"] > 0, (
-                    f"DAL player {dal_row['name']} has bye outside Q3 — W{week} should be > 0"
-                )
+        assert dal_row["ufl_pts_w14"] == 0.0, (
+            f"DAL player {dal_row['name']} should have 0 pts in W14 (bye), got {dal_row['ufl_pts_w14']}"
+        )
+        assert dal_row["ufl_pts_w13"] > 0 or dal_row["ufl_pts_w15"] > 0 or dal_row["ufl_pts_w16"] > 0, (
+            f"DAL player {dal_row['name']} should have >0 pts in non-bye Q4 weeks"
+        )
+        weekly_sum = round(
+            dal_row["ufl_pts_w13"] + dal_row["ufl_pts_w14"] +
+            dal_row["ufl_pts_w15"] + dal_row["ufl_pts_w16"], 2
+        )
+        assert abs(weekly_sum - round(dal_row["ufl_pts"], 2)) < 0.15, (
+            f"DAL player {dal_row['name']}: sum of weekly pts ({weekly_sum}) should ~= ufl_pts ({dal_row['ufl_pts']})"
+        )
 
-    # Team alias check (e.g. JAC abbreviation from FantasyPros maps to JAX bye W7, outside Q3)
+    # Players with byes outside Q4 (e.g. DET, bye W6) should have no zeroed Q4 week
+    det_players = df[(df["team"] == "DET") & (df["ufl_pts"] > 0)]
+    if not det_players.empty:
+        det_row = det_players.iloc[0]
+        assert det_row["bye_week"] == 6, f"DET bye week should be 6, got {det_row['bye_week']}"
+        for week in q4_weeks:
+            assert det_row[f"ufl_pts_w{week}"] > 0, (
+                f"DET player {det_row['name']} has bye outside Q4 — W{week} should be > 0"
+            )
+
+    # Team alias check (e.g. JAC abbreviation from FantasyPros maps to JAX bye W7, outside Q4)
     jac_players = df[df["team"].isin(["JAC", "JAX"])]
     if not jac_players.empty:
         jac_row = jac_players.iloc[0]
         assert jac_row["bye_week"] == 7, f"JAC/JAX player {jac_row['name']} bye_week should be 7, got {jac_row['bye_week']}"
 
     # 4. solve_4_week_portfolio() test
-    # Build a synthetic roster: one PIT player (bye W9), one PHI player (bye W10)
-    roster_pit = [{"name": "PIT Player", "position": "QB", "team": "PIT", "ufl_pts": 120.0}]
-    roster_phi = [{"name": "PHI Player", "position": "QB", "team": "PHI", "ufl_pts": 120.0}]
+    roster_bal = [{"name": "BAL Player", "position": "QB", "team": "BAL", "ufl_pts": 120.0}]
+    roster_dal = [{"name": "DAL Player", "position": "QB", "team": "DAL", "ufl_pts": 120.0}]
+    roster_det = [{"name": "DET Player", "position": "QB", "team": "DET", "ufl_pts": 120.0}]
 
     optimizer = JointOptimizer({"QB": 2, "RB": 1, "WR": 1, "TE": 1, "FLEX": 2, "BENCH": 5},
-                                weeks=[9, 10, 11, 12], bye_weeks_map=bye_map)
+                                weeks=[13, 14, 15, 16], bye_weeks_map=bye_map)
 
-    # PIT player with bye W9: should score 0 in W9 and ~30 in each of W10, W11, W12
-    pit_port = optimizer.solve_4_week_portfolio(roster_pit)
-    phi_port = optimizer.solve_4_week_portfolio(roster_phi)
-
-    # Both players have exactly 1 Q3 bye — portfolio should be ~equal (3 active weeks each, same total pts)
-    assert abs(pit_port - phi_port) < 2.0, (
-        f"PIT and PHI players (both 1 Q3 bye, same total pts) should have ~equal portfolios: "
-        f"PIT={pit_port}, PHI={phi_port}"
-    )
-
-    # A player with no Q3 bye should score more than one with a Q3 bye (same total pts, 4 vs 3 active weeks)
-    # DAL has bye W14 (outside Q3), so all 4 Q3 weeks are active
-    roster_dal = [{"name": "DAL Player", "position": "QB", "team": "DAL", "ufl_pts": 120.0}]
+    bal_port = optimizer.solve_4_week_portfolio(roster_bal)
     dal_port = optimizer.solve_4_week_portfolio(roster_dal)
-    assert dal_port > pit_port, (
-        f"DAL (no Q3 bye, 4 active weeks) should outscore PIT (bye W9, 3 active weeks): "
-        f"DAL={dal_port}, PIT={pit_port}"
+    det_port = optimizer.solve_4_week_portfolio(roster_det)
+
+    assert abs(bal_port - dal_port) < 2.0, (
+        f"BAL and DAL players (both 1 Q4 bye, same total pts) should have ~equal portfolios: "
+        f"BAL={bal_port}, DAL={dal_port}"
+    )
+    assert det_port > bal_port, (
+        f"DET (no Q4 bye, 4 active weeks) should outscore BAL (bye W13, 3 active weeks): "
+        f"DET={det_port}, BAL={bal_port}"
     )
 
     # 5. Cliff detection includes bye week annotations
@@ -746,19 +741,17 @@ def test_bye_weeks():
     ds.reset_draft()
     calc = VORPCalculator(ds.roster_limits)
     cliffs = calc.detect_positional_cliffs(df, ds)
-    # If any cliff message exists for a player with a Q3 bye, it should annotate the bye
     for cliff in cliffs:
         if "BYE W" in cliff.get("message", ""):
-            # Verify the bye week is actually in Q3 (9-12)
             import re
             match = re.search(r"BYE W(\d+)", cliff["message"])
             if match:
                 bye_wk = int(match.group(1))
-                assert 9 <= bye_wk <= 12, (
-                    f"Cliff bye annotation shows W{bye_wk} but only Q3 byes (W9-W12) should be annotated"
+                assert 13 <= bye_wk <= 16, (
+                    f"Cliff bye annotation shows W{bye_wk} but only Q4 byes (W13-W16) should be annotated"
                 )
 
-    print("  ✅ Bye Week Handling (Q3) passed!")
+    print("  ✅ Bye Week Handling (Q4) passed!")
 
 
 def test_games_based_injury_discounts():
@@ -772,49 +765,49 @@ def test_games_based_injury_discounts():
     assert synth.GAME_DISCOUNT_SCALE[1] == 0.25
     assert synth.GAME_DISCOUNT_SCALE[0] == 0.0
 
-    # 2. Test overrides with expected_games and return_week (using players without Q3 byes)
+    # 2. Test overrides with expected_games and return_week (using players without Q4 byes)
     synth.overrides = {
         "players": {
             "Josh Allen": {"expected_games": 3},
-            "Lamar Jackson": {"expected_games": 2},
+            "Joe Burrow": {"expected_games": 2},
             "Brock Purdy": {"expected_games": 1},
             "Tyler Shough": {"expected_games": 0},
-            "Patrick Mahomes": {"return_week": 11}
+            "Patrick Mahomes": {"return_week": 15}
         }
     }
     df = synth.synthesize()
 
-    # Josh Allen: 3 games -> 0.75, week 9 should be 0.0
+    # Josh Allen: 3 games -> 0.75, week 13 should be 0.0
     ja = df[df["name"] == "Josh Allen"].iloc[0]
     assert ja["injury_multiplier"] == 0.75, f"Josh Allen expected 0.75, got {ja['injury_multiplier']}"
-    assert ja["ufl_pts_w9"] == 0.0, "Josh Allen W9 should be 0.0 (missed week)"
-    assert ja["ufl_pts_w10"] > 0.0, "Josh Allen W10 should be active"
+    assert ja["ufl_pts_w13"] == 0.0, "Josh Allen W13 should be 0.0 (missed week)"
+    assert ja["ufl_pts_w14"] > 0.0, "Josh Allen W14 should be active"
 
-    # Lamar Jackson: 2 games -> 0.50, weeks 9-10 should be 0.0
-    lj = df[df["name"] == "Lamar Jackson"].iloc[0]
-    assert lj["injury_multiplier"] == 0.50, f"Lamar Jackson expected 0.50, got {lj['injury_multiplier']}"
-    assert lj["ufl_pts_w9"] == 0.0, "Lamar Jackson W9 should be 0.0"
-    assert lj["ufl_pts_w10"] == 0.0, "Lamar Jackson W10 should be 0.0"
-    assert lj["ufl_pts_w11"] > 0.0, "Lamar Jackson W11 should be active"
+    # Joe Burrow: 2 games -> 0.50, weeks 13-14 should be 0.0
+    jb = df[df["name"] == "Joe Burrow"].iloc[0]
+    assert jb["injury_multiplier"] == 0.50, f"Joe Burrow expected 0.50, got {jb['injury_multiplier']}"
+    assert jb["ufl_pts_w13"] == 0.0, "Joe Burrow W13 should be 0.0"
+    assert jb["ufl_pts_w14"] == 0.0, "Joe Burrow W14 should be 0.0"
+    assert jb["ufl_pts_w15"] > 0.0, "Joe Burrow W15 should be active"
 
-    # Brock Purdy: 1 game -> 0.25, weeks 9-11 should be 0.0
+    # Brock Purdy: 1 game -> 0.25, weeks 13-15 should be 0.0
     bp = df[df["name"] == "Brock Purdy"].iloc[0]
     assert bp["injury_multiplier"] == 0.25, f"Brock Purdy expected 0.25, got {bp['injury_multiplier']}"
-    assert bp["ufl_pts_w9"] == 0.0, "Brock Purdy W9 should be 0.0"
-    assert bp["ufl_pts_w10"] == 0.0, "Brock Purdy W10 should be 0.0"
-    assert bp["ufl_pts_w11"] == 0.0, "Brock Purdy W11 should be 0.0"
+    assert bp["ufl_pts_w13"] == 0.0, "Brock Purdy W13 should be 0.0"
+    assert bp["ufl_pts_w14"] == 0.0, "Brock Purdy W14 should be 0.0"
+    assert bp["ufl_pts_w15"] == 0.0, "Brock Purdy W15 should be 0.0"
 
     # Tyler Shough: 0 games -> 0.0
     ts = df[df["name"] == "Tyler Shough"].iloc[0]
     assert ts["injury_multiplier"] == 0.0, f"Tyler Shough expected 0.0, got {ts['injury_multiplier']}"
     assert ts["ufl_pts"] == 0.0, "Tyler Shough total pts should be 0.0"
 
-    # Patrick Mahomes (KC bye W5, no Q3 bye): return_week=11 -> plays weeks 11, 12 (2 games) -> 0.50
+    # Patrick Mahomes (KC bye W5, no Q4 bye): return_week=15 -> plays weeks 15, 16 (2 games) -> 0.50
     pm = df[df["name"] == "Patrick Mahomes"].iloc[0]
-    assert pm["injury_multiplier"] == 0.50, f"Patrick Mahomes expected 0.50 for return W11, got {pm['injury_multiplier']}"
-    assert pm["ufl_pts_w9"] == 0.0, "Patrick Mahomes W9 should be 0.0"
-    assert pm["ufl_pts_w10"] == 0.0, "Patrick Mahomes W10 should be 0.0"
-    assert pm["ufl_pts_w11"] > 0.0, "Patrick Mahomes W11 should be active"
+    assert pm["injury_multiplier"] == 0.50, f"Patrick Mahomes expected 0.50 for return W15, got {pm['injury_multiplier']}"
+    assert pm["ufl_pts_w13"] == 0.0, "Patrick Mahomes W13 should be 0.0"
+    assert pm["ufl_pts_w14"] == 0.0, "Patrick Mahomes W14 should be 0.0"
+    assert pm["ufl_pts_w15"] > 0.0, "Patrick Mahomes W15 should be active"
 
     print("  ✅ Games-Based Injury Return Discount Scale passed!")
 

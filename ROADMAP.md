@@ -1,16 +1,14 @@
 # UFL Fantasy Football Draft Advisor — Roadmap
 
-## Backlog
-
-### Opponent-Specific Matchup Projections
-**Priority**: Low (enhancement for regular season)
-**Status**: Planned
-
-Incorporate weekly opponent defensive ranking adjustments (defense vs. position) and game-by-game projected totals once weekly projection CSV feeds are actively published by sources in-season.
-
----
-
 ## Recently Completed
+
+### Q4 Scoring Window, Matchup Projections & Recency Weighting
+**Status**: Completed (November 2026)
+- **Target Quarter Configured**: Switched target scoring window to **Q4 (Weeks 13–16)** across [LEAGUE_RULES.md](data/LEAGUE_RULES.md) and [config.json](data/config.json) (6 teams on bye: W13 BAL/IND/LV/NYJ, W14 ARI/DAL; 0 byes in W15–16).
+- **Per-Week Matchup Projections**: Preserved individual weekly Sleeper/RotoWire matchup ratios (`wk_ratio_w13`–`wk_ratio_w16`) from live weekly projections through `ProjectionSynthesizer` into `JointOptimizer.solve_4_week_portfolio()`.
+- **Recency-Weighted Sleeper YTD**: Weighted the most recent 4 completed weeks at `2.0×` vs. earlier weeks (`1.0×`) in `SleeperStatsFetcher`, plus added `l4w_pts` (Last 4 Weeks 4-game pace) tracking.
+- **Calibrated `QUESTIONABLE` Discount & Injury Badges**: Refined `QUESTIONABLE` from `0.75×` to `0.90×` (keeping `OUT` at `0.75×` and `IR/PUP/SUS` at `0.0×`) and surfaced explicit injury badges in the Command Center & War Room.
+- **In-App Quick Overrides & UI Polish**: Added sidebar player override editor, active-game PPG display, bye-aware standings, and always-visible Sleeper sync status.
 
 ### Q2 Scoring Window & Per-Week Bye Modeling
 **Status**: Completed (September/October 2026)

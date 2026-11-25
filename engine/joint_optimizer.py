@@ -45,10 +45,10 @@ class JointOptimizer:
         if os.path.exists(cfg_path):
             try:
                 with open(cfg_path, "r") as f:
-                    return json.load(f).get("weeks", [9, 10, 11, 12])
+                    return json.load(f).get("weeks", [13, 14, 15, 16])
             except Exception:
                 pass
-        return [9, 10, 11, 12]
+        return [13, 14, 15, 16]
 
     @staticmethod
     def _load_default_bye_weeks() -> Dict[str, int]:
@@ -622,11 +622,22 @@ class JointOptimizer:
             "TE": [p for p in undrafted_records if p["position"] == "TE"],
         }
 
-        # Calculate positional replacement baselines for normalized cross-position opponent choices
+        # Calculate positional replacement baselines using bye-adjusted effective value
+        # so 3-game stars with a bye in the scoring window (e.g. McBride, Bowers, CeeDee) are realistically drafted by opponents
+        def _eff_pts(rec: dict) -> float:
+            u_pts = float(rec.get("ufl_pts", 0.0))
+            ppg = float(rec.get("points_per_game", 0.0))
+            if u_pts > 0.0 and ppg > 0.0 and (ppg * 3.5) > u_pts:
+                return round(u_pts + ppg * 0.55, 2)
+            return u_pts
+
+        for p in undrafted_records:
+            p["_eff_pts"] = _eff_pts(p)
+
         def _get_turn_baseline(pos: str, rank_idx: int, fallback: float) -> float:
-            sub = projections_df[projections_df["position"] == pos]
-            if not sub.empty:
-                return sub.iloc[min(rank_idx, len(sub) - 1)]["ufl_pts"]
+            sub = sorted([p["_eff_pts"] for p in pos_records[pos]], reverse=True)
+            if sub:
+                return sub[min(rank_idx, len(sub) - 1)]
             return fallback
 
         pos_baselines = {
@@ -637,7 +648,7 @@ class JointOptimizer:
         }
 
         for p in undrafted_records:
-            p["_pos_vorp"] = p["ufl_pts"] - pos_baselines.get(p["position"], 20.0)
+            p["_pos_vorp"] = p["_eff_pts"] - pos_baselines.get(p["position"], 20.0)
 
         # Create seeded RNG for deterministic Monte Carlo simulations
         rng = np.random.default_rng(seed)
@@ -769,13 +780,16 @@ class JointOptimizer:
             follow_ups = candidates_df[(candidates_df["name"] != c_name) & (candidates_df["position"] != c_pos)]
             top_follow = follow_ups.iloc[0]["name"] if not follow_ups.empty else "Best VORP Available"
 
+            cand_ppg = float(cand["points_per_game"]) if "points_per_game" in cand and pd.notnull(cand["points_per_game"]) else round(cand["ufl_pts"] / 4.0, 1)
             matrix_rows.append({
                 "name": c_name,
                 "position": c_pos,
                 "team": cand["team"],
                 "ufl_pts": cand["ufl_pts"],
                 "q1_pts": float(cand.get("q1_pts", 0.0)),
-                "ppg": round(cand["ufl_pts"] / 4.0, 1),
+                "l4w_pts": float(cand.get("l4w_pts", 0.0)),
+                "injury_status": str(cand.get("injury_status", "HEALTHY")),
+                "ppg": round(cand_ppg, 1),
                 "marginal_gain": c_gain,
                 "projected_team_pts": c_proj_pts,
                 "survival_pct": survival_pct,
