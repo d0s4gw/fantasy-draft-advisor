@@ -122,10 +122,25 @@ def _render_war_room(draft_state, rec_projections_df, active_engine, selected_st
             st.markdown(f"#### Real-Time Candidate Decision Matrix & Survival Simulations ({tq})")
         with c_war2:
             if st.button("🔄 Recalculate Matrix", key="btn_recalc_war_room", width="stretch"):
+                st.session_state["war_room_nonce"] = st.session_state.get("war_room_nonce", 0) + 1
+                st.session_state.pop("war_room_cache", None)
                 st.cache_data.clear()
                 st.rerun()
 
-        war_room_data = active_engine.generate_war_room_matrix(rec_projections_df, draft_state, macro_strategy=selected_strategy_key)
+        pick_no_key = curr_pick_i["pick_no"] if curr_pick_i else 73
+        nonce = st.session_state.get("war_room_nonce", 0)
+        cache_key = (pick_no_key, selected_strategy_key, tuple(sorted(st.session_state.get("skipped_this_pick", set()))), nonce)
+        cached = st.session_state.get("war_room_cache")
+        if cached and cached.get("key") == cache_key:
+            war_room_data = cached["data"]
+        else:
+            war_room_data = active_engine.generate_war_room_matrix(
+                rec_projections_df,
+                draft_state,
+                macro_strategy=selected_strategy_key,
+                seed=1000 + pick_no_key + nonce
+            )
+            st.session_state["war_room_cache"] = {"key": cache_key, "data": war_room_data}
         candidates_list = war_room_data.get("candidates", [])
 
         if not candidates_list:

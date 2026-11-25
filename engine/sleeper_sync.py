@@ -75,7 +75,7 @@ class SleeperSync:
                 self.name_to_id = name_to_id
 
                 with open(self.player_map_file, "w") as f:
-                    json.dump({"id_to_name": id_to_name, "name_to_id": name_to_id}, f)
+                    json.dump({"id_to_name": id_to_name, "name_to_id": name_to_id, "_raw": players_data}, f)
         except Exception as e:
             print(f"Error fetching Sleeper player database: {e}")
 
@@ -159,6 +159,7 @@ class SleeperSync:
                         "picked_by": p.get("picked_by"),
                         "roster_id": p.get("roster_id")
                     })
+                parsed_picks.sort(key=lambda x: x.get("pick_no") or 9999)
                 return parsed_picks
         except Exception as e:
             print(f"Error polling Sleeper draft picks for ID '{actual_draft_id}': {e}")

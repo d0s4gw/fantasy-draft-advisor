@@ -38,7 +38,30 @@ ALIASES = {
     "nabers": "Malik Nabers",
     "odunze": "Rome Odunze",
     "worthy": "Xavier Worthy",
-    "mcconkey": "Ladd McConkey"
+    "mcconkey": "Ladd McConkey",
+    "jsn": "Jaxon Smith-Njigba",
+    "jd5": "Jayden Daniels",
+    "daniels": "Jayden Daniels",
+    "bucky": "Bucky Irving",
+    "chuba": "Chuba Hubbard",
+    "burrow": "Joe Burrow",
+    "purdy": "Brock Purdy",
+    "stroud": "C.J. Stroud",
+    "tlaw": "Trevor Lawrence",
+    "maye": "Drake Maye",
+    "evans": "Mike Evans",
+    "london": "Drake London",
+    "higgins": "Tee Higgins",
+    "fannin": "Harold Fannin",
+    "likely": "Isaiah Likely",
+    "loveland": "Colston Loveland",
+    "jeanty": "Ashton Jeanty",
+    "skattebo": "Cam Skattebo",
+    "cook": "James Cook",
+    "henry": "Derrick Henry",
+    "love": "Jordan Love",
+    "dak": "Dak Prescott",
+    "caleb": "Caleb Williams"
 }
 
 class FuzzySearcher:

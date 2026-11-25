@@ -151,10 +151,12 @@ def render_draft_results(draft_state, projections_df):
             bench_top = sel_details["best_bench_player"]
             if bench_top:
                 b_name = bench_top.get("name") or bench_top.get("player_name") or ""
+                b_match = projections_df[projections_df["name"] == b_name]
+                b_ppg = float(b_match.iloc[0]["points_per_game"]) if not b_match.empty and "points_per_game" in b_match.columns else (bench_top["ufl_pts"] / 4.0)
                 st.metric(
                     "Top Bench Backup",
                     f"{b_name} ({bench_top['position']})",
-                    delta=f"{bench_top['ufl_pts'] / 4.0:.1f} PPG"
+                    delta=f"{b_ppg:.1f} PPG"
                 )
             else:
                 st.metric("Top Bench Backup", "None", delta="0.0 PPG")
@@ -198,11 +200,13 @@ def render_draft_results(draft_state, projections_df):
             b_display = []
             for bp in bench_list:
                 bp_name = bp.get("name") or bp.get("player_name") or ""
+                bp_match = projections_df[projections_df["name"] == bp_name]
+                bp_ppg = float(bp_match.iloc[0]["points_per_game"]) if not bp_match.empty and "points_per_game" in bp_match.columns else (bp["ufl_pts"] / 4.0)
                 b_display.append({
                     "Player": bp_name,
                     "Position": bp["position"],
                     "Team": bp["team"],
                     f"{tq_label} Pts": f"{bp['ufl_pts']:.1f}",
-                    "Weekly PPG": f"{bp['ufl_pts'] / 4.0:.1f}"
+                    "Active PPG": f"{bp_ppg:.1f}"
                 })
             st.dataframe(pd.DataFrame(b_display), width="stretch", hide_index=True)

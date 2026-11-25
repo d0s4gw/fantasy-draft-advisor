@@ -102,6 +102,8 @@ class DraftState:
 
         assigned_gov = governor if governor else curr_info["governor"]
         clean_name = player_name.strip()
+        if not clean_name or clean_name.lower() in self.drafted_players:
+            return {}
         pick_data = {
             "pick_no": len(self.picks_history) + 1,
             "round": curr_info["round"],
@@ -117,6 +119,38 @@ class DraftState:
         self.rosters[assigned_gov].append(pick_data)
         self.save_state()
         return pick_data
+
+    def update_draft_order(self, new_governors: List[str], my_team_name: Optional[str] = None) -> bool:
+        """Updates governor draft order in data/config.local.json and rebuilds snake order."""
+        cleaned = [g.strip() for g in new_governors if g and g.strip()]
+        if len(cleaned) != self.num_teams or len(set(cleaned)) != self.num_teams:
+            return False
+
+        target_team = my_team_name.strip() if my_team_name and my_team_name.strip() in cleaned else (
+            self.my_team if self.my_team in cleaned else cleaned[0]
+        )
+        local_config_path = os.path.join(os.path.dirname(self.config_path), "config.local.json")
+        local_cfg = {}
+        if os.path.exists(local_config_path):
+            try:
+                with open(local_config_path, "r") as lf:
+                    local_cfg = json.load(lf)
+            except Exception:
+                local_cfg = {}
+        local_cfg["governors"] = cleaned
+        local_cfg["my_team_name"] = target_team
+        with open(local_config_path, "w") as lf:
+            json.dump(local_cfg, lf, indent=2)
+
+        self.config["governors"] = cleaned
+        self.config["my_team_name"] = target_team
+        self.governors = cleaned
+        self.my_team = target_team
+        self.my_index = self.governors.index(self.my_team)
+        self.snake_order = self._generate_snake_order()
+        # Preserve existing rosters if names match, otherwise initialize empty lists
+        self.rosters = {gov: self.rosters.get(gov, []) for gov in self.governors}
+        return True
 
     def undo_last_pick(self) -> Optional[Dict]:
         """Undoes the most recent pick."""

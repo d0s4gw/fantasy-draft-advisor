@@ -72,6 +72,33 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
             # Spacer at bottom of popover 1
             st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
+        # POPOVER 1C: DRAFT ORDER EDITOR
+        with st.popover("📋 Draft order", icon=":material/format_list_numbered:", width="stretch"):
+            st.markdown(f"#### Edit {tq} draft order")
+            st.caption("Saved privately to `data/config.local.json`.")
+            with st.form("draft_order_form"):
+                ordered_names = []
+                for slot_i, g_name in enumerate(draft_state.governors, start=1):
+                    ordered_names.append(
+                        st.text_input(f"Pick #{slot_i}", value=g_name, key=f"ord_slot_{slot_i}")
+                    )
+                my_idx_default = draft_state.governors.index(draft_state.my_team) if draft_state.my_team in draft_state.governors else 0
+                my_slot_pick = st.selectbox(
+                    "Your team slot",
+                    options=list(range(1, len(draft_state.governors) + 1)),
+                    index=my_idx_default,
+                    format_func=lambda n: f"Pick #{n}",
+                    key="ord_my_slot"
+                )
+                if st.form_submit_button("Save draft order", type="primary", width="stretch"):
+                    target_name = ordered_names[my_slot_pick - 1].strip() if my_slot_pick <= len(ordered_names) else None
+                    if draft_state.update_draft_order(ordered_names, my_team_name=target_name):
+                        st.session_state.pop("war_room_cache", None)
+                        st.toast("Updated draft order & snake matrix!")
+                        st.rerun()
+                    else:
+                        st.error("Enter 6 unique non-empty team names.")
+
         # POPOVER 1B: QUICK PLAYER OVERRIDES
         with st.popover("🩹 Player overrides", icon=":material/medical_services:", width="stretch"):
             st.markdown(f"#### Manual {tq} player overrides")
@@ -210,7 +237,7 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
                                 synced_count += 1
                             
                             st.toast(f"Synced {synced_count} new pick(s) from Sleeper!")
-                            st.rerun()
+                            st.rerun(scope="app")
                         elif len(picks) < len(draft_state.picks_history):
                             st.caption("ℹ️ Local draft state has more picks than Sleeper (manual picks logged).")
                     else:
@@ -238,7 +265,7 @@ def render_sidebar(draft_state, synth, sleeper_sync, health_matrix, projections_
                 draft_state.reset_draft()
                 st.cache_data.clear()
                 # Only clear draft-related session state keys
-                draft_keys = ["draft_state", "synth", "sleeper_sync", "skipped_this_pick", "last_seen_pick_no"]
+                draft_keys = ["draft_state", "synth", "sleeper_sync", "skipped_this_pick", "last_seen_pick_no", "war_room_cache", "war_room_nonce"]
                 for key in draft_keys:
                     if key in st.session_state:
                         del st.session_state[key]

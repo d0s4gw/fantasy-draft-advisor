@@ -57,6 +57,9 @@ def test_draft_state():
     ds.record_pick("Christian McCaffrey", "RB", "SF", 175.8)
     assert len(ds.picks_history) == 1, "Picks history count should be 1"
     assert ds.is_drafted("Christian McCaffrey"), "CMC should be marked as drafted"
+    # Duplicate pick guard
+    dup = ds.record_pick("Christian McCaffrey", "RB", "SF", 175.8)
+    assert dup == {} and len(ds.picks_history) == 1, "Duplicate pick must be ignored"
     
     # Test undo
     undone = ds.undo_last_pick()
@@ -153,6 +156,9 @@ def test_fuzzy_search():
 
     results_btj = searcher.search("btj")
     assert any("Thomas" in r for r in results_btj), f"Fuzzy search 'btj' should return Brian Thomas, got {results_btj}"
+
+    results_jsn = searcher.search("jsn")
+    assert any("Smith-Njigba" in r for r in results_jsn), f"Fuzzy search 'jsn' should return Jaxon Smith-Njigba, got {results_jsn}"
     print("  ✅ FuzzySearcher passed!")
 
 def test_opponent_predictor():
